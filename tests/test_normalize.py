@@ -15,7 +15,13 @@ def test_stress_is_ignored_by_default() -> None:
     assert left.segments == right.segments
 
 
-def test_german_affricate_alias_is_canonicalized() -> None:
-    tied = parse_ipa("t͡s", language="de-DE")
-    untied = parse_ipa("ts", language="de-DE")
-    assert tied.segments == untied.segments == ("t͡s",)
+def test_nfc_and_nfd_diacritics_are_equivalent() -> None:
+    nfc = parse_ipa("ã", language=None)
+    nfd = parse_ipa("a\u0303", language=None)
+    assert nfc.normalized == nfd.normalized
+    assert nfc.segments == nfd.segments == ("ã",)
+
+
+def test_supported_ipa_diacritics_are_single_segments() -> None:
+    for value in ("n̩", "ã", "aː", "tʰ"):
+        assert len(parse_ipa(value).segments) == 1

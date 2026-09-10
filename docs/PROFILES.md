@@ -19,6 +19,10 @@ Profiles should **not** become:
 - TTS-specific rewrite systems
 - exhaustive N×N distance matrices
 
+## Inventory semantics
+
+The bundled `inventory` is descriptive profile metadata and an audit aid. It is not an exhaustive rejection list in metric v1. PanPhon remains authoritative for whether an IPA segment has a feature representation, because the profile does not enumerate every length mark, narrow allophone, loanword segment, or external G2P realization.
+
 ## Rule types
 
 ### Alias
@@ -29,11 +33,10 @@ segment in the profile.
 Example:
 
 ```text
-de-DE: ts -> t͡s
+de-DE: t͜s -> t͡s
 ```
 
-Aliases have effectively zero comparison cost because they canonicalize
-before alignment.
+Aliases are reserved for representation-level canonicalization. Generic normalization already canonicalizes the supported tie-bar variant; untied affricates are modeled as sequence equivalences so their zero-cost alignment remains visible in explanations.
 
 ### Sequence equivalence
 

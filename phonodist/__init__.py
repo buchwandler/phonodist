@@ -17,6 +17,7 @@ from .model import (
     ParseDiagnostic,
     ParsedPronunciation,
 )
+from .profiles import available_profiles, get_profile
 
 try:
     __version__ = version("phonodist")
@@ -38,4 +39,6 @@ __all__ = [
     "parse_ipa",
     "pronunciation_distance",
     "segment_distance",
+    "available_profiles",
+    "get_profile",
 ]

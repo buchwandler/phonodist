@@ -2,57 +2,33 @@
 
 Language-aware, explainable distance metrics for IPA pronunciations.
 
-`phonodist` compares **IPA with IPA**. It does not perform grapheme-to-phoneme
-conversion and does not synthesize audio.
+`phonodist` compares IPA with IPA. It does not perform grapheme-to-phoneme
+conversion or synthesize audio. The initial metric combines Unicode-safe IPA
+normalization, segment tokenization, PanPhon articulatory features, weighted
+alignment, and sparse language-specific equivalence rules.
 
-The initial MVP combines:
-
-- Unicode-safe IPA normalization
-- IPA segment tokenization
-- PanPhon-backed articulatory feature distance
-- weighted sequence alignment
-- sparse language-specific equivalence rules
-- an initial `de-DE` profile
-
-## Layout
-
-This project intentionally does **not** use a `src/` directory:
-
-```text
-phonodist/
-├── phonodist/
-│   ├── __init__.py
-│   ├── api.py
-│   ├── ...
-│   └── data/profiles/de-DE.toml
-├── tests/
-├── pyproject.toml
-└── README.md
-```
-
-## Dynamic versioning
-
-Versions come from Git tags through `setuptools-scm`.
-
-After unpacking:
+## Installation
 
 ```bash
-git init
-git add .
-git commit -m "Initial phonodist scaffold"
-git tag v0.1.0
-
-python -m pip install -e ".[dev]"
-python -c "import phonodist; print(phonodist.__version__)"
+pip install phonodist
 ```
 
-Without Git metadata, builds fall back to:
+Development dependencies are installed with:
+
+```bash
+python -m pip install -e ".[dev]"
+```
+
+## Supported profiles
+
+The bundled profile is:
 
 ```text
-0+unknown
+de-DE
 ```
 
-Do not manually maintain a version constant.
+`de`, `de-DE`, and `de_de` resolve to `de-DE`. Use `language=None` for
+universal feature mode without language-specific profile rules.
 
 ## Quick start
 
@@ -61,69 +37,64 @@ from phonodist import pronunciation_distance
 
 result = pronunciation_distance(
     "ˈlʊftvafn̩ˌʃtʏt͡spʊŋkt",
-    "lˈʊftvˌafənʃtˌʏt‍spʊŋkt",
+    "lˈʊftvˌafənʃtˌʏt\u200dspʊŋkt",
     language="de-DE",
 )
 
 print(result.distance)
-
-for operation in result.operations:
-    print(operation)
 ```
 
-The German profile removes representation noise such as stress differences
-in broad mode, recognizes German affricate notation aliases, and provides a
-low-cost equivalence for common reductions such as:
-
-```text
-ən ↔ n̩
-əm ↔ m̩
-əl ↔ l̩
-```
+`pronunciation_distance` uses score-only mode by default. Request alignment
+operations explicitly with `explain=True`.
 
 ## CLI
 
 ```bash
 phonodist compare de-DE \
   'ˈlʊftvafn̩ˌʃtʏt͡spʊŋkt' \
-  'lˈʊftvˌafənʃtˌʏt‍spʊŋkt' \
+  'lˈʊftvˌafənʃtˌʏt\u200dspʊŋkt' \
   --explain
 ```
 
-JSON output:
+JSON output is available with `--json`, and the package version is available
+with `phonodist --version`.
 
-```bash
-phonodist compare de-DE 'p' 'b' --json
-```
+## Strict IPA behavior
 
-## Metric scope
+PanPhon validates every resulting segment. Unsupported IPA raises
+`UnknownSegmentError`, including when an unsupported segment appears on only
+one side or is identical on both sides. Unicode format characters such as the
+zero-width joiner are ignored during normalization. Stress is intentionally
+ignored by `feature-align/1`; retained-stress scoring is not implemented.
 
-The MVP score is a **phonetic feature distance**, not a validated model of
-human perceptual similarity.
+## Metric scope and provenance
 
-It is intended as a deterministic comparison primitive for:
+The MVP score is a phonetic feature distance, not a validated model of human
+perceptual similarity. It is intended for deterministic comparison, ranking,
+lexicon validation, G2P evaluation, pronunciation regression tests, and
+investigation of suspicious pronunciation pairs.
 
-- lexicon validation
-- G2P evaluation
-- pronunciation regression tests
-- investigation of suspicious pronunciation pairs
+Each result records the metric and metric version, profile and profile version,
+and PanPhon backend version and feature set. Consumers such as Lexphon should
+define their own thresholds. See [docs/METRIC.md](docs/METRIC.md) and
+[docs/PROFILES.md](docs/PROFILES.md).
 
-Consumers such as Lexphon should define their own acceptance/reporting
-thresholds.
+Metric and profile details may evolve during the 0.x series. Changes to metric
+semantics require a metric version bump. Language-specific rule or cost changes
+require a profile version bump. Documentation and performance fixes that
+preserve scores only require a package version change.
 
 ## Development
 
 ```bash
-python -m pip install -e ".[dev]"
 pytest
 ruff check .
 mypy phonodist
+pre-commit run --all-files
 python -m build
 ```
 
 ## License
 
-Apache-2.0.
-
-PanPhon is an external MIT-licensed dependency and is not vendored here.
-PHOIBLE data is not bundled or copied into this package.
+Apache-2.0. PanPhon is an external MIT-licensed dependency and is not vendored
+here. PHOIBLE data is not bundled or copied into this package.

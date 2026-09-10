@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import argparse
 import json
-from dataclasses import asdict
 from collections.abc import Sequence
+from dataclasses import asdict
 
+from . import __version__
 from .api import pronunciation_distance
+from .errors import PhonodistError
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -13,17 +15,13 @@ def _build_parser() -> argparse.ArgumentParser:
         prog="phonodist",
         description="Language-aware IPA pronunciation distance.",
     )
+    parser.add_argument("--version", action="version", version=__version__)
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     compare = subparsers.add_parser("compare", help="compare two IPA pronunciations")
     compare.add_argument("language", help="language/profile tag, e.g. de-DE")
     compare.add_argument("source", help="source IPA")
     compare.add_argument("target", help="target IPA")
-    compare.add_argument(
-        "--keep-stress",
-        action="store_true",
-        help="retain IPA stress marks instead of broad stress-insensitive comparison",
-    )
     compare.add_argument("--explain", action="store_true", help="print alignment operations")
     compare.add_argument("--json", action="store_true", help="emit JSON")
 
@@ -37,12 +35,17 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.command != "compare":
         parser.error(f"unsupported command: {args.command}")
 
-    result = pronunciation_distance(
-        args.source,
-        args.target,
-        language=args.language,
-        ignore_stress=not args.keep_stress,
-    )
+    try:
+        result = pronunciation_distance(
+            args.source,
+            args.target,
+            language=args.language,
+            explain=args.explain,
+        )
+    except PhonodistError as error:
+        parser.exit(2, f"phonodist: {error}\n")
+    except NotImplementedError as error:
+        parser.exit(2, f"phonodist: {error}\n")
 
     if args.json:
         print(json.dumps(asdict(result), ensure_ascii=False, indent=2))
@@ -51,6 +54,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     print(f"distance: {result.distance:.6f}")
     print(f"raw_cost: {result.raw_cost:.6f}")
     print(f"metric: {result.metric}/{result.metric_version}")
+    print(f"backend: {result.backend}/{result.backend_version} ({result.feature_set})")
     if result.language is not None:
         print(f"profile: {result.language}/{result.profile_version}")
 

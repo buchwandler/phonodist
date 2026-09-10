@@ -78,3 +78,6 @@ class DistanceResult:
     metric_version: str
     language: str | None
     profile_version: str | None
+    backend: str
+    backend_version: str
+    feature_set: str

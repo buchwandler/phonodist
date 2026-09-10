@@ -38,3 +38,11 @@ The normalized pronunciation score is bounded to `[0, 1]`.
 This score is not a calibrated human perceptual-distance model. It is a
 deterministic phonetic-feature comparison intended for validation and
 ranking.
+
+## Stress scope
+
+`feature-align/1` intentionally ignores primary and secondary stress. Stress-aware or prosodic comparison is outside the v0.1 metric. The public pronunciation-distance API rejects retained-stress scoring instead of treating stress markers as ordinary PanPhon segments.
+
+## Provenance and versioning
+
+Every `DistanceResult` records the metric and metric version, selected profile and profile version, and the PanPhon backend name, resolved version, and `spe+` feature set. Bump the metric version when alignment, normalization, costs, or feature formulas change. Bump a profile version when language-specific rules or costs change. Package-only fixes that preserve scores do not require a metric version bump.

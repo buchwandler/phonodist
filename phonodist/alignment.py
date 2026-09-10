@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from .features import FeatureBackend
-from .model import AlignmentOperation, SequenceEquivalence
+from .model import AlignmentOperation, OperationKind, SequenceEquivalence
 
 
 @dataclass(frozen=True, slots=True)
@@ -23,14 +23,73 @@ def _suffix_matches(
     return start >= 0 and sequence[start:end] == suffix
 
 
-def align_segments(
+def _substitution_cost(backend: FeatureBackend, left: str, right: str) -> float:
+    return 0.0 if left == right else backend.segment_distance(left, right)
+
+
+def _align_score_only(
     source: tuple[str, ...],
     target: tuple[str, ...],
     *,
     backend: FeatureBackend,
-    equivalences: tuple[SequenceEquivalence, ...] = (),
+    equivalences: tuple[SequenceEquivalence, ...],
+) -> float:
+    rows = len(source) + 1
+    cols = len(target) + 1
+    costs = [[float("inf")] * cols for _ in range(rows)]
+    costs[0][0] = 0.0
+
+    for i in range(rows):
+        for j in range(cols):
+            if i == 0 and j == 0:
+                continue
+
+            candidates: list[tuple[float, int, int, int]] = []
+            if i > 0 and j > 0:
+                candidates.append(
+                    (
+                        costs[i - 1][j - 1]
+                        + _substitution_cost(backend, source[i - 1], target[j - 1]),
+                        0 if source[i - 1] == target[j - 1] else 1,
+                        i - 1,
+                        j - 1,
+                    )
+                )
+
+            for rule in equivalences:
+                for left_sequence, right_sequence in (
+                    (rule.left, rule.right),
+                    (rule.right, rule.left),
+                ):
+                    if _suffix_matches(source, i, left_sequence) and _suffix_matches(
+                        target, j, right_sequence
+                    ):
+                        previous_i = i - len(left_sequence)
+                        previous_j = j - len(right_sequence)
+                        candidates.append(
+                            (costs[previous_i][previous_j] + rule.cost, 2, previous_i, previous_j)
+                        )
+
+            if i > 0:
+                candidates.append((costs[i - 1][j] + 1.0, 3, i - 1, j))
+            if j > 0:
+                candidates.append((costs[i][j - 1] + 1.0, 4, i, j - 1))
+
+            costs[i][j] = min(
+                candidates,
+                key=lambda item: (round(item[0], 12), item[1], item[2], item[3]),
+            )[0]
+
+    return costs[-1][-1]
+
+
+def _align_with_traceback(
+    source: tuple[str, ...],
+    target: tuple[str, ...],
+    *,
+    backend: FeatureBackend,
+    equivalences: tuple[SequenceEquivalence, ...],
 ) -> tuple[float, tuple[AlignmentOperation, ...]]:
-    """Weighted dynamic-programming alignment with sparse N<->M rules."""
     rows = len(source) + 1
     cols = len(target) + 1
 
@@ -45,24 +104,25 @@ def align_segments(
 
             candidates: list[tuple[float, int, _Step]] = []
 
+            kind: OperationKind
             if i > 0 and j > 0:
                 left = source[i - 1]
                 right = target[j - 1]
                 if left == right:
-                    sub_cost = 0.0
                     kind = "match"
                     reason = "exact_segment"
                     precedence = 0
+                    sub_cost = 0.0
                 else:
-                    sub_cost = backend.segment_distance(left, right)
                     kind = "substitute"
                     reason = "panphon_feature_substitution"
                     precedence = 1
+                    sub_cost = backend.segment_distance(left, right)
 
                 operation = AlignmentOperation(
                     source=(left,),
                     target=(right,),
-                    kind=kind,  # type: ignore[arg-type]
+                    kind=kind,
                     cost=sub_cost,
                     reason=reason,
                 )
@@ -75,11 +135,10 @@ def align_segments(
                 )
 
             for rule in equivalences:
-                orientations = (
+                for left_sequence, right_sequence in (
                     (rule.left, rule.right),
                     (rule.right, rule.left),
-                )
-                for left_sequence, right_sequence in orientations:
+                ):
                     if _suffix_matches(source, i, left_sequence) and _suffix_matches(
                         target, j, right_sequence
                     ):
@@ -96,12 +155,7 @@ def align_segments(
                             (
                                 costs[previous_i][previous_j] + rule.cost,
                                 2,
-                                _Step(
-                                    previous_i,
-                                    previous_j,
-                                    operation,
-                                    2,
-                                ),
+                                _Step(previous_i, previous_j, operation, 2),
                             )
                         )
 
@@ -113,13 +167,7 @@ def align_segments(
                     cost=1.0,
                     reason="segment_deletion",
                 )
-                candidates.append(
-                    (
-                        costs[i - 1][j] + 1.0,
-                        3,
-                        _Step(i - 1, j, operation, 3),
-                    )
-                )
+                candidates.append((costs[i - 1][j] + 1.0, 3, _Step(i - 1, j, operation, 3)))
 
             if j > 0:
                 operation = AlignmentOperation(
@@ -129,13 +177,7 @@ def align_segments(
                     cost=1.0,
                     reason="segment_insertion",
                 )
-                candidates.append(
-                    (
-                        costs[i][j - 1] + 1.0,
-                        4,
-                        _Step(i, j - 1, operation, 4),
-                    )
-                )
+                candidates.append((costs[i][j - 1] + 1.0, 4, _Step(i, j - 1, operation, 4)))
 
             best_cost, _, best_step = min(
                 candidates,
@@ -163,3 +205,27 @@ def align_segments(
 
     operations.reverse()
     return costs[-1][-1], tuple(operations)
+
+
+def align_segments(
+    source: tuple[str, ...],
+    target: tuple[str, ...],
+    *,
+    backend: FeatureBackend,
+    equivalences: tuple[SequenceEquivalence, ...] = (),
+    explain: bool = False,
+) -> tuple[float, tuple[AlignmentOperation, ...]]:
+    """Align segments, optionally returning the deterministic traceback."""
+    if explain:
+        return _align_with_traceback(
+            source,
+            target,
+            backend=backend,
+            equivalences=equivalences,
+        )
+    return _align_score_only(
+        source,
+        target,
+        backend=backend,
+        equivalences=equivalences,
+    ), ()

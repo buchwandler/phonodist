@@ -11,6 +11,17 @@ license = "Apache-2.0"
 authors = [{name = "Holger Nahrstaedt"}]
 keywords = ["ipa", "phonetics", "phonology", "pronunciation", "distance", "g2p", "tts"]
 dynamic = ["version"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Text Processing :: Linguistic",
+]
+license-files = ["LICENSE", "THIRD_PARTY_LICENSES.md"]
 dependencies = [
     "panphon>=0.22.2,<0.23",
     "tomli>=2; python_version < '3.11'",
@@ -29,10 +40,9 @@ dev = [
 phonodist = "phonodist.cli:main"
 
 [project.urls]
-# Fill these after creating the repository.
-# Repository = "https://github.com/buchwandler/phonodist"
-# Issues = "https://github.com/buchwandler/phonodist/issues"
-
+Homepage = "https://github.com/buchwandler/phonodist"
+Repository = "https://github.com/buchwandler/phonodist"
+Issues = "https://github.com/buchwandler/phonodist/issues"
 # Intentionally no src/ layer. The import package lives at ./phonodist.
 [tool.setuptools.packages.find]
 where = ["."]

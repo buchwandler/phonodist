@@ -3,7 +3,8 @@ from __future__ import annotations
 from functools import lru_cache
 
 from .alignment import align_segments
-from .features import PanphonFeatureBackend
+from .errors import UnknownSegmentError
+from .features import FeatureBackend, PanphonFeatureBackend
 from .model import DistanceResult, LanguageProfile, ParsedPronunciation
 from .normalize import normalize_ipa
 from .profiles import get_profile, normalize_language_tag
@@ -22,6 +23,22 @@ def _resolve_profile(language: str | None) -> LanguageProfile | None:
     if language is None:
         return None
     return get_profile(language)
+
+
+def _validate_segments(
+    parsed: ParsedPronunciation,
+    backend: FeatureBackend,
+    *,
+    pronunciation: str,
+    language: str | None,
+) -> None:
+    for index, segment in enumerate(parsed.segments):
+        if not backend.has_segment(segment):
+            profile = f" for profile {language}" if language is not None else ""
+            raise UnknownSegmentError(
+                f"unsupported IPA segment {segment!r} at segment index {index}{profile} "
+                f"in {pronunciation!r} using {backend.name} {backend.version}"
+            )
 
 
 def parse_ipa(
@@ -58,9 +75,16 @@ def pronunciation_distance(
     *,
     language: str | None = None,
     ignore_stress: bool | None = None,
+    explain: bool = False,
 ) -> DistanceResult:
+    """Return feature-align/1 distance, optionally with an alignment explanation."""
+    if ignore_stress is False:
+        raise NotImplementedError(
+            "feature-align/1 is stress-insensitive; stress-aware comparison is not implemented"
+        )
     profile = _resolve_profile(language)
     normalized_language = normalize_language_tag(language) if language is not None else None
+    backend = _backend()
 
     parsed_source = parse_ipa(
         source,
@@ -72,12 +96,25 @@ def pronunciation_distance(
         language=language,
         ignore_stress=ignore_stress,
     )
+    _validate_segments(
+        parsed_source,
+        backend,
+        pronunciation=source,
+        language=normalized_language,
+    )
+    _validate_segments(
+        parsed_target,
+        backend,
+        pronunciation=target,
+        language=normalized_language,
+    )
 
     raw_cost, operations = align_segments(
         parsed_source.segments,
         parsed_target.segments,
-        backend=_backend(),
+        backend=backend,
         equivalences=profile.sequence_equivalences if profile is not None else (),
+        explain=explain,
     )
 
     denominator = float(max(len(parsed_source.segments), len(parsed_target.segments)))
@@ -95,4 +132,7 @@ def pronunciation_distance(
         metric_version=_METRIC_VERSION,
         language=normalized_language,
         profile_version=profile.version if profile is not None else None,
+        backend=backend.name,
+        backend_version=backend.version,
+        feature_set=backend.feature_set,
     )

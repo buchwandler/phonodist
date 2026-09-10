@@ -20,33 +20,30 @@ inventory = [
 sources = [
   "PanPhon feature system: https://github.com/dmort27/panphon",
   "PHOIBLE German inventories, research cross-check only: https://phoible.org/languages/stan1295",
+  "Kohler and Rodgers, Schwa deletion in German read and spontaneous speech: https://www.ipds.uni-kiel.de/kjk/pub_exx/aipuk35/kkjr.pdf"
 ]
 
-[[aliases]]
-input = "t͜s"
-canonical = "t͡s"
-reason = "de-DE:tie-bar-variant"
-
-[[aliases]]
-input = "ts"
-canonical = "t͡s"
+[[sequence_equivalences]]
+left = ["t", "s"]
+right = ["t͡s"]
+cost = 0.0
 reason = "de-DE:affricate-notation"
 
-[[aliases]]
-input = "p͜f"
-canonical = "p͡f"
-reason = "de-DE:tie-bar-variant"
-
-[[aliases]]
-input = "pf"
-canonical = "p͡f"
+[[sequence_equivalences]]
+left = ["p", "f"]
+right = ["p͡f"]
+cost = 0.0
 reason = "de-DE:affricate-notation"
 
-[[aliases]]
-input = "t͜ʃ"
-canonical = "t͡ʃ"
-reason = "de-DE:tie-bar-variant"
+[[sequence_equivalences]]
+left = ["t", "ʃ"]
+right = ["t͡ʃ"]
+cost = 0.0
+reason = "de-DE:affricate-notation"
 
+# Heuristic v1 alignment cost. The linguistic equivalence is sourced;
+# the numeric cost is an engineering parameter to be calibrated against
+# reviewed benchmark examples.
 [[sequence_equivalences]]
 left = ["ə", "n"]
 right = ["n̩"]
