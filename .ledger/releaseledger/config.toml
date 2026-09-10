@@ -10,10 +10,9 @@ code = "rl"
 # Release defaults.
 
 [release]
-default_changelog = "CHANGELOG.md"
+default_changelog = "docs/changelog.md"
 default_status = "planned"
-allow_dirty_worktree = true
-# Changelog build defaults.
+allow_dirty_worktree = false
 
 [changelog]
 output = "docs/changelog.md"
@@ -50,7 +49,6 @@ default_base = "previous_release_tag"
 default_head = "HEAD"
 previous_tag_patterns = ["v{version}", "{version}"]
 include_merges = "nontrivial"
-require_clean_worktree = false
-max_commits = 500
+require_clean_worktree = true
 max_diff_chars_per_commit = 12000
 candidate_status = "draft"

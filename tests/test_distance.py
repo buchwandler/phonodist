@@ -60,3 +60,40 @@ def test_contrastive_variants_are_ordered() -> None:
 def test_retained_stress_is_not_supported() -> None:
     with pytest.raises(NotImplementedError, match="stress-insensitive"):
         pronunciation_distance("ˈa", "a", ignore_stress=False)
+
+
+@pytest.mark.parametrize(
+    ("left", "right", "language"),
+    [
+        ("p", "b", "de-DE"),
+        ("ən", "n̩", "de-DE"),
+        ("t͡s", "ts", "de-DE"),
+        ("a", "e", None),
+        ("a", "", None),
+    ],
+)
+def test_score_only_matches_traceback(
+    left: str,
+    right: str,
+    language: str | None,
+) -> None:
+    score_only = pronunciation_distance(left, right, language=language)
+    explained = pronunciation_distance(left, right, language=language, explain=True)
+
+    assert explained.raw_cost == pytest.approx(score_only.raw_cost)
+    assert explained.distance == pytest.approx(score_only.distance)
+    assert sum(operation.cost for operation in explained.operations) == pytest.approx(
+        explained.raw_cost
+    )
+
+
+def test_traceback_tie_breaking_is_deterministic() -> None:
+    first = pronunciation_distance("ab", "ba", explain=True)
+    second = pronunciation_distance("ab", "ba", explain=True)
+    assert first.operations == second.operations
+
+
+def test_universal_mode_provenance_is_explicit() -> None:
+    result = pronunciation_distance("p", "b")
+    assert result.language is None
+    assert result.profile_version is None

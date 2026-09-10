@@ -39,6 +39,12 @@ This score is not a calibrated human perceptual-distance model. It is a
 deterministic phonetic-feature comparison intended for validation and
 ranking.
 
+A zero score means equivalence under the selected normalization and profile rules, not raw-string identity. Stress removal, notation normalization, and profile sequence equivalences can therefore produce zero for different input strings.
+
+## Diagnostic offsets
+
+`ParseDiagnostic.offset` is an index into the normalized working input after outer delimiters and surrounding whitespace have been removed. It is not an index into `ParsedPronunciation.original` when those transformations changed the input.
+
 ## Stress scope
 
 `feature-align/1` intentionally ignores primary and secondary stress. Stress-aware or prosodic comparison is outside the v0.1 metric. The public pronunciation-distance API rejects retained-stress scoring instead of treating stress markers as ordinary PanPhon segments.

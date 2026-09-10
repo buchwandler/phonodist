@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import unicodedata
 from functools import cache
 from importlib.resources import files
 from typing import Any
@@ -46,6 +47,11 @@ def _required_string(value: Any, field: str) -> str:
     return value
 
 
+def _validate_alias_text(value: str, field: str) -> None:
+    if any(char.isspace() or unicodedata.category(char) == "Cf" for char in value):
+        raise ProfileValidationError(f"{field} must not contain whitespace or format characters")
+
+
 def _profile_from_raw(raw: Any, language: str) -> LanguageProfile:
     if not isinstance(raw, dict):
         raise ProfileValidationError("profile data must be a table")
@@ -70,6 +76,14 @@ def _profile_from_raw(raw: Any, language: str) -> LanguageProfile:
         alias_input = _required_string(item.get("input"), "aliases.input")
         canonical = _required_string(item.get("canonical"), "aliases.canonical")
         reason = _required_string(item.get("reason"), "aliases.reason")
+        _validate_alias_text(alias_input, "aliases.input")
+        _validate_alias_text(canonical, "aliases.canonical")
+        if alias_input == canonical:
+            raise ProfileValidationError("alias input and canonical value must differ")
+        if any(
+            previous.canonical == alias_input or previous.input == canonical for previous in aliases
+        ):
+            raise ProfileValidationError("aliases must not cascade")
         if alias_input in alias_inputs:
             raise ProfileValidationError(f"duplicate alias input: {alias_input!r}")
         alias_inputs.add(alias_input)

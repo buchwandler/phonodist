@@ -1,8 +1,8 @@
 include LICENSE
 include THIRD_PARTY_LICENSES.md
 include README.md
+include docs/RELEASING.md
 recursive-include phonodist/data *.toml
-recursive-include phonodist *.pyi
 prune .ledger
 exclude .codecrate.toml
 exclude context_*

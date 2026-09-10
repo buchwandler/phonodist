@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import unicodedata
 
+from .errors import InvalidIPAError
 from .model import ParseDiagnostic
 
 _PRIMARY_STRESS = "ˈ"
@@ -35,6 +36,9 @@ def normalize_ipa(
     ignore_stress: bool = True,
 ) -> tuple[str, tuple[ParseDiagnostic, ...]]:
     """Normalize IPA representation without applying language-specific rules."""
+    if not isinstance(value, str):
+        raise InvalidIPAError("IPA value must be a string")
+
     original = value
     value = unicodedata.normalize("NFC", value.strip())
     diagnostics: list[ParseDiagnostic] = []
@@ -99,5 +103,5 @@ def normalize_ipa(
 
     normalized = unicodedata.normalize("NFC", "".join(output))
     if not normalized and original.strip():
-        return normalized, tuple(diagnostics)
+        raise InvalidIPAError("IPA value contains no parseable IPA characters")
     return normalized, tuple(diagnostics)

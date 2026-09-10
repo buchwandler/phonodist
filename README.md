@@ -52,7 +52,7 @@ operations explicitly with `explain=True`.
 ```bash
 phonodist compare de-DE \
   'ˈlʊftvafn̩ˌʃtʏt͡spʊŋkt' \
-  'lˈʊftvˌafənʃtˌʏt\u200dspʊŋkt' \
+  'lˈʊftvˌafənʃtˌʏtspʊŋkt' \
   --explain
 ```
 
@@ -75,9 +75,9 @@ lexicon validation, G2P evaluation, pronunciation regression tests, and
 investigation of suspicious pronunciation pairs.
 
 Each result records the metric and metric version, profile and profile version,
-and PanPhon backend version and feature set. Consumers such as Lexphon should
-define their own thresholds. See [docs/METRIC.md](docs/METRIC.md) and
-[docs/PROFILES.md](docs/PROFILES.md).
+and PanPhon backend version and feature set. Consumers such as Lexphon
+should define their own thresholds. See [docs/METRIC.md](https://github.com/buchwandler/phonodist/blob/main/docs/METRIC.md) and
+[docs/PROFILES.md](https://github.com/buchwandler/phonodist/blob/main/docs/PROFILES.md).
 
 Metric and profile details may evolve during the 0.x series. Changes to metric
 semantics require a metric version bump. Language-specific rule or cost changes
@@ -93,6 +93,20 @@ mypy phonodist
 pre-commit run --all-files
 python -m build
 ```
+
+## Benchmarking
+
+Run the representative throughput benchmark with a small count during development:
+
+```bash
+python benchmarks/benchmark_distance.py --count 1000
+```
+
+The benchmark compares score-only and explained calls and reports profile load time. Its values are engineering baselines, not calibrated human-perceptual examples. Profile costs remain explicitly tunable parameters until a later calibration study.
+
+## Release publishing
+
+Before pushing a `v0.1.0` tag, configure and verify the PyPI Trusted Publisher for the `pypi` GitHub environment. The publisher must use GitHub Actions OIDC and does not require an API token. See [docs/RELEASING.md](https://github.com/buchwandler/phonodist/blob/main/docs/RELEASING.md).
 
 ## License
 

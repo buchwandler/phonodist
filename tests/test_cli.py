@@ -15,6 +15,22 @@ def test_cli_json_and_explain(capsys: pytest.CaptureFixture[str]) -> None:
     assert output["operations"]
 
 
+def test_cli_readme_command(capsys: pytest.CaptureFixture[str]) -> None:
+    assert (
+        main(
+            [
+                "compare",
+                "de-DE",
+                "ˈlʊftvafn̩ˌʃtʏt͡spʊŋkt",
+                "lˈʊftvˌafənʃtˌʏtspʊŋkt",
+                "--explain",
+            ]
+        )
+        == 0
+    )
+    assert "distance:" in capsys.readouterr().out
+
+
 def test_cli_version(capsys: pytest.CaptureFixture[str]) -> None:
     with pytest.raises(SystemExit) as error:
         main(["--version"])
