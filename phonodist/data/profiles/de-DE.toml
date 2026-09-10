@@ -1,0 +1,66 @@
+schema_version = 1
+id = "de-DE"
+version = "1"
+name = "Standard German"
+default_ignore_stress = true
+
+# This is intentionally an MVP inventory, not a claim to enumerate every
+# segment occurring in every German variety or loanword.
+inventory = [
+  "p", "b", "t", "d", "k", "ɡ",
+  "f", "v", "s", "z", "ʃ", "ç", "x", "h",
+  "m", "n", "ŋ", "l", "r", "ʀ", "ʁ", "j",
+  "t͡s", "p͡f", "t͡ʃ",
+  "i", "ɪ", "y", "ʏ", "e", "ɛ", "ø", "œ",
+  "ə", "ɐ", "a", "u", "ʊ", "o", "ɔ"
+]
+
+# Sources are provenance pointers for profile review. No PHOIBLE data is
+# copied into this file.
+sources = [
+  "PanPhon feature system: https://github.com/dmort27/panphon",
+  "PHOIBLE German inventories, research cross-check only: https://phoible.org/languages/stan1295",
+]
+
+[[aliases]]
+input = "t͜s"
+canonical = "t͡s"
+reason = "de-DE:tie-bar-variant"
+
+[[aliases]]
+input = "ts"
+canonical = "t͡s"
+reason = "de-DE:affricate-notation"
+
+[[aliases]]
+input = "p͜f"
+canonical = "p͡f"
+reason = "de-DE:tie-bar-variant"
+
+[[aliases]]
+input = "pf"
+canonical = "p͡f"
+reason = "de-DE:affricate-notation"
+
+[[aliases]]
+input = "t͜ʃ"
+canonical = "t͡ʃ"
+reason = "de-DE:tie-bar-variant"
+
+[[sequence_equivalences]]
+left = ["ə", "n"]
+right = ["n̩"]
+cost = 0.10
+reason = "de-DE:unstressed-schwa-syllabic-nasal"
+
+[[sequence_equivalences]]
+left = ["ə", "m"]
+right = ["m̩"]
+cost = 0.10
+reason = "de-DE:unstressed-schwa-syllabic-nasal"
+
+[[sequence_equivalences]]
+left = ["ə", "l"]
+right = ["l̩"]
+cost = 0.10
+reason = "de-DE:unstressed-schwa-syllabic-lateral"
