@@ -1,0 +1,1407 @@
+ .github/workflows/python-publish.yml |  28 ++++++++
+ .github/workflows/tests.yml          |   5 +-
+ MANIFEST.in                          |   8 +++
+ README.md                            | 113 ++++++++++++-------------------
+ benchmarks/benchmark_distance.py     |  39 +++++++++++
+ docs/METRIC.md                       |   8 +++
+ docs/PROFILES.md                     |   9 ++-
+ docs/changelog.md                    |  16 +++++
+ phonodist/__init__.py                |   3 +
+ phonodist/alignment.py               | 126 ++++++++++++++++++++++++++---------
+ phonodist/api.py                     |  44 +++++++++++-
+ phonodist/cli.py                     |  28 ++++----
+ phonodist/data/profiles/de-DE.toml   |  37 +++++-----
+ phonodist/features.py                |  87 ++++++++++++++++--------
+ phonodist/model.py                   |   3 +
+ phonodist/profiles.py                | 121 ++++++++++++++++++++++-----------
+ pyproject.toml                       |  18 +++--
+ tests/test_cli.py                    |  38 +++++++++++
+ tests/test_de_de.py                  |  16 +++--
+ tests/test_distance.py               |  39 ++++++++++-
+ tests/test_features.py               |  22 +++++-
+ tests/test_normalize.py              |  14 ++--
+ tests/test_packaging.py              |  12 ++++
+ tests/test_profiles.py               |  57 ++++++++++++++++
+ 24 files changed, 671 insertions(+), 220 deletions(-)
+
+diff --git a/.github/workflows/python-publish.yml b/.github/workflows/python-publish.yml
+new file mode 100644
+index 0000000..e31f6c5
+--- /dev/null
++++ b/.github/workflows/python-publish.yml
+@@ -0,0 +1,28 @@
++name: publish
++
++on:
++  push:
++    tags:
++      - "v*"
++
++permissions:
++  contents: read
++  id-token: write
++
++jobs:
++  publish:
++    runs-on: ubuntu-latest
++    steps:
++      - uses: actions/checkout@v4
++        with:
++          fetch-depth: 0
++      - uses: actions/setup-python@v5
++        with:
++          python-version: "3.13"
++      - run: python -m pip install --upgrade pip build
++      - run: python -m build
++      - uses: actions/upload-artifact@v4
++        with:
++          name: python-package
++          path: dist/
++      - uses: pypa/gh-action-pypi-publish@release/v1
+diff --git a/.github/workflows/tests.yml b/.github/workflows/tests.yml
+index a632432..de30c7e 100644
+--- a/.github/workflows/tests.yml
++++ b/.github/workflows/tests.yml
+@@ -23,7 +23,7 @@ jobs:
+
+       - run: python -m pip install --upgrade pip
+       - run: python -m pip install -e ".[dev]"
+-      - run: pytest
++      - run: pytest --cov=phonodist --cov-report=term-missing --cov-report=xml
+       - run: ruff check .
+       - run: mypy phonodist
+
+@@ -39,3 +39,6 @@ jobs:
+       - run: python -m pip install --upgrade pip
+       - run: python -m pip install build
+       - run: python -m build
++      - run: python -m venv /tmp/phonodist-wheel-venv
++      - run: /tmp/phonodist-wheel-venv/bin/python -m pip install dist/*.whl
++      - run: cd /tmp && /tmp/phonodist-wheel-venv/bin/python -c 'import phonodist; from phonodist import get_profile; assert get_profile("de-DE").id == "de-DE"; print(phonodist.__version__)'
+diff --git a/MANIFEST.in b/MANIFEST.in
+new file mode 100644
+index 0000000..a5f74c1
+--- /dev/null
++++ b/MANIFEST.in
+@@ -0,0 +1,8 @@
++include LICENSE
++include THIRD_PARTY_LICENSES.md
++include README.md
++recursive-include phonodist/data *.toml
++recursive-include phonodist *.pyi
++prune .ledger
++exclude .codecrate.toml
++exclude context_*
+diff --git a/README.md b/README.md
+index 753cea8..68488e2 100644
+--- a/README.md
++++ b/README.md
+@@ -2,57 +2,33 @@
+
+ Language-aware, explainable distance metrics for IPA pronunciations.
+
+-`phonodist` compares **IPA with IPA**. It does not perform grapheme-to-phoneme
+-conversion and does not synthesize audio.
++`phonodist` compares IPA with IPA. It does not perform grapheme-to-phoneme
++conversion or synthesize audio. The initial metric combines Unicode-safe IPA
++normalization, segment tokenization, PanPhon articulatory features, weighted
++alignment, and sparse language-specific equivalence rules.
+
+-The initial MVP combines:
++## Installation
+
+-- Unicode-safe IPA normalization
+-- IPA segment tokenization
+-- PanPhon-backed articulatory feature distance
+-- weighted sequence alignment
+-- sparse language-specific equivalence rules
+-- an initial `de-DE` profile
+-
+-## Layout
+-
+-This project intentionally does **not** use a `src/` directory:
+-
+-```text
+-phonodist/
+-├── phonodist/
+-│   ├── __init__.py
+-│   ├── api.py
+-│   ├── ...
+-│   └── data/profiles/de-DE.toml
+-├── tests/
+-├── pyproject.toml
+-└── README.md
++```bash
++pip install phonodist
+ ```
+
+-## Dynamic versioning
+-
+-Versions come from Git tags through `setuptools-scm`.
+-
+-After unpacking:
++Development dependencies are installed with:
+
+ ```bash
+-git init
+-git add .
+-git commit -m "Initial phonodist scaffold"
+-git tag v0.1.0
+-
+ python -m pip install -e ".[dev]"
+-python -c "import phonodist; print(phonodist.__version__)"
+ ```
+
+-Without Git metadata, builds fall back to:
++## Supported profiles
++
++The bundled profile is:
+
+ ```text
+-0+unknown
++de-DE
+ ```
+
+-Do not manually maintain a version constant.
++`de`, `de-DE`, and `de_de` resolve to `de-DE`. Use `language=None` for
++universal feature mode without language-specific profile rules.
+
+ ## Quick start
+
+@@ -61,69 +37,64 @@ from phonodist import pronunciation_distance
+
+ result = pronunciation_distance(
+     "ˈlʊftvafn̩ˌʃtʏt͡spʊŋkt",
+-    "lˈʊftvˌafənʃtˌʏt‍spʊŋkt",
++    "lˈʊftvˌafənʃtˌʏt\u200dspʊŋkt",
+     language="de-DE",
+ )
+
+ print(result.distance)
+-
+-for operation in result.operations:
+-    print(operation)
+ ```
+
+-The German profile removes representation noise such as stress differences
+-in broad mode, recognizes German affricate notation aliases, and provides a
+-low-cost equivalence for common reductions such as:
+-
+-```text
+-ən ↔ n̩
+-əm ↔ m̩
+-əl ↔ l̩
+-```
++`pronunciation_distance` uses score-only mode by default. Request alignment
++operations explicitly with `explain=True`.
+
+ ## CLI
+
+ ```bash
+ phonodist compare de-DE \
+   'ˈlʊftvafn̩ˌʃtʏt͡spʊŋkt' \
+-  'lˈʊftvˌafənʃtˌʏt‍spʊŋkt' \
++  'lˈʊftvˌafənʃtˌʏt\u200dspʊŋkt' \
+   --explain
+ ```
+
+-JSON output:
++JSON output is available with `--json`, and the package version is available
++with `phonodist --version`.
+
+-```bash
+-phonodist compare de-DE 'p' 'b' --json
+-```
++## Strict IPA behavior
+
+-## Metric scope
++PanPhon validates every resulting segment. Unsupported IPA raises
++`UnknownSegmentError`, including when an unsupported segment appears on only
++one side or is identical on both sides. Unicode format characters such as the
++zero-width joiner are ignored during normalization. Stress is intentionally
++ignored by `feature-align/1`; retained-stress scoring is not implemented.
+
+-The MVP score is a **phonetic feature distance**, not a validated model of
+-human perceptual similarity.
++## Metric scope and provenance
+
+-It is intended as a deterministic comparison primitive for:
++The MVP score is a phonetic feature distance, not a validated model of human
++perceptual similarity. It is intended for deterministic comparison, ranking,
++lexicon validation, G2P evaluation, pronunciation regression tests, and
++investigation of suspicious pronunciation pairs.
+
+-- lexicon validation
+-- G2P evaluation
+-- pronunciation regression tests
+-- investigation of suspicious pronunciation pairs
++Each result records the metric and metric version, profile and profile version,
++and PanPhon backend version and feature set. Consumers such as Lexphon should
++define their own thresholds. See [docs/METRIC.md](docs/METRIC.md) and
++[docs/PROFILES.md](docs/PROFILES.md).
+
+-Consumers such as Lexphon should define their own acceptance/reporting
+-thresholds.
++Metric and profile details may evolve during the 0.x series. Changes to metric
++semantics require a metric version bump. Language-specific rule or cost changes
++require a profile version bump. Documentation and performance fixes that
++preserve scores only require a package version change.
+
+ ## Development
+
+ ```bash
+-python -m pip install -e ".[dev]"
+ pytest
+ ruff check .
+ mypy phonodist
++pre-commit run --all-files
+ python -m build
+ ```
+
+ ## License
+
+-Apache-2.0.
+-
+-PanPhon is an external MIT-licensed dependency and is not vendored here.
+-PHOIBLE data is not bundled or copied into this package.
++Apache-2.0. PanPhon is an external MIT-licensed dependency and is not vendored
++here. PHOIBLE data is not bundled or copied into this package.
+diff --git a/benchmarks/benchmark_distance.py b/benchmarks/benchmark_distance.py
+new file mode 100644
+index 0000000..c46691e
+--- /dev/null
++++ b/benchmarks/benchmark_distance.py
+@@ -0,0 +1,39 @@
++from __future__ import annotations
++
++import argparse
++from time import perf_counter
++
++from phonodist import get_profile, pronunciation_distance
++
++SOURCE = "ˈlʊftvafn̩ˌʃtʏt͡spʊŋkt"
++TARGET = "lˈʊftvˌafənʃtˌʏt\u200dspʊŋkt"
++
++
++def _measure(count: int, *, explain: bool) -> float:
++    start = perf_counter()
++    for _ in range(count):
++        pronunciation_distance(SOURCE, TARGET, language="de-DE", explain=explain)
++    return perf_counter() - start
++
++
++def main() -> None:
++    parser = argparse.ArgumentParser(description="Measure warm phonodist throughput.")
++    parser.add_argument("--count", type=int, default=1000)
++    args = parser.parse_args()
++
++    cold_start = perf_counter()
++    get_profile("de-DE")
++    cold_profile = perf_counter() - cold_start
++    score_only = _measure(args.count, explain=False)
++    explained = _measure(args.count, explain=True)
++
++    print(f"profile_load_seconds={cold_profile:.6f}")
++    print(f"score_only_calls={args.count}")
++    print(f"score_only_seconds={score_only:.6f}")
++    print(f"score_only_calls_per_second={args.count / score_only:.2f}")
++    print(f"explain_seconds={explained:.6f}")
++    print(f"explain_calls_per_second={args.count / explained:.2f}")
++
++
++if __name__ == "__main__":
++    main()
+diff --git a/docs/METRIC.md b/docs/METRIC.md
+index 1728533..7fdb545 100644
+--- a/docs/METRIC.md
++++ b/docs/METRIC.md
+@@ -38,3 +38,11 @@ The normalized pronunciation score is bounded to `[0, 1]`.
+ This score is not a calibrated human perceptual-distance model. It is a
+ deterministic phonetic-feature comparison intended for validation and
+ ranking.
++
++## Stress scope
++
++`feature-align/1` intentionally ignores primary and secondary stress. Stress-aware or prosodic comparison is outside the v0.1 metric. The public pronunciation-distance API rejects retained-stress scoring instead of treating stress markers as ordinary PanPhon segments.
++
++## Provenance and versioning
++
++Every `DistanceResult` records the metric and metric version, selected profile and profile version, and the PanPhon backend name, resolved version, and `spe+` feature set. Bump the metric version when alignment, normalization, costs, or feature formulas change. Bump a profile version when language-specific rules or costs change. Package-only fixes that preserve scores do not require a metric version bump.
+diff --git a/docs/PROFILES.md b/docs/PROFILES.md
+index 93012cc..84547f0 100644
+--- a/docs/PROFILES.md
++++ b/docs/PROFILES.md
+@@ -19,6 +19,10 @@ Profiles should **not** become:
+ - TTS-specific rewrite systems
+ - exhaustive N×N distance matrices
+
++## Inventory semantics
++
++The bundled `inventory` is descriptive profile metadata and an audit aid. It is not an exhaustive rejection list in metric v1. PanPhon remains authoritative for whether an IPA segment has a feature representation, because the profile does not enumerate every length mark, narrow allophone, loanword segment, or external G2P realization.
++
+ ## Rule types
+
+ ### Alias
+@@ -29,11 +33,10 @@ segment in the profile.
+ Example:
+
+ ```text
+-de-DE: ts -> t͡s
++de-DE: t͜s -> t͡s
+ ```
+
+-Aliases have effectively zero comparison cost because they canonicalize
+-before alignment.
++Aliases are reserved for representation-level canonicalization. Generic normalization already canonicalizes the supported tie-bar variant; untied affricates are modeled as sequence equivalences so their zero-cost alignment remains visible in explanations.
+
+ ### Sequence equivalence
+
+diff --git a/docs/changelog.md b/docs/changelog.md
+new file mode 100644
+index 0000000..2708a2a
+--- /dev/null
++++ b/docs/changelog.md
+@@ -0,0 +1,16 @@
++# Changelog
++
++## 0.1.0
++
++Initial alpha release of the deterministic `feature-align/1` IPA metric.
++
++- Added PanPhon-backed articulatory feature comparison.
++- Added the bundled Standard German `de-DE` profile.
++- Added sparse sequence equivalences for German syllabic-sonorant reductions and affricate notation.
++- Added strict unsupported-segment validation and complete metric/profile/backend provenance.
++- Defined the v0.1 metric as stress-insensitive.
++- Added score-only operation-free mode and optional explainable alignment.
++
++This release is alpha quality. Numeric profile costs are engineering parameters
++that require calibration against reviewed benchmark examples. The metric is not
++a validated human perceptual or acoustic similarity model.
+diff --git a/phonodist/__init__.py b/phonodist/__init__.py
+index d45936f..dd768d0 100644
+--- a/phonodist/__init__.py
++++ b/phonodist/__init__.py
+@@ -17,6 +17,7 @@ from .model import (
+     ParseDiagnostic,
+     ParsedPronunciation,
+ )
++from .profiles import available_profiles, get_profile
+
+ try:
+     __version__ = version("phonodist")
+@@ -38,4 +39,6 @@ __all__ = [
+     "parse_ipa",
+     "pronunciation_distance",
+     "segment_distance",
++    "available_profiles",
++    "get_profile",
+ ]
+diff --git a/phonodist/alignment.py b/phonodist/alignment.py
+index ae85c20..2e0c4db 100644
+--- a/phonodist/alignment.py
++++ b/phonodist/alignment.py
+@@ -3,7 +3,7 @@ from __future__ import annotations
+ from dataclasses import dataclass
+
+ from .features import FeatureBackend
+-from .model import AlignmentOperation, SequenceEquivalence
++from .model import AlignmentOperation, OperationKind, SequenceEquivalence
+
+
+ @dataclass(frozen=True, slots=True)
+@@ -23,14 +23,73 @@ def _suffix_matches(
+     return start >= 0 and sequence[start:end] == suffix
+
+
+-def align_segments(
++def _substitution_cost(backend: FeatureBackend, left: str, right: str) -> float:
++    return 0.0 if left == right else backend.segment_distance(left, right)
++
++
++def _align_score_only(
+     source: tuple[str, ...],
+     target: tuple[str, ...],
+     *,
+     backend: FeatureBackend,
+-    equivalences: tuple[SequenceEquivalence, ...] = (),
++    equivalences: tuple[SequenceEquivalence, ...],
++) -> float:
++    rows = len(source) + 1
++    cols = len(target) + 1
++    costs = [[float("inf")] * cols for _ in range(rows)]
++    costs[0][0] = 0.0
++
++    for i in range(rows):
++        for j in range(cols):
++            if i == 0 and j == 0:
++                continue
++
++            candidates: list[tuple[float, int, int, int]] = []
++            if i > 0 and j > 0:
++                candidates.append(
++                    (
++                        costs[i - 1][j - 1]
++                        + _substitution_cost(backend, source[i - 1], target[j - 1]),
++                        0 if source[i - 1] == target[j - 1] else 1,
++                        i - 1,
++                        j - 1,
++                    )
++                )
++
++            for rule in equivalences:
++                for left_sequence, right_sequence in (
++                    (rule.left, rule.right),
++                    (rule.right, rule.left),
++                ):
++                    if _suffix_matches(source, i, left_sequence) and _suffix_matches(
++                        target, j, right_sequence
++                    ):
++                        previous_i = i - len(left_sequence)
++                        previous_j = j - len(right_sequence)
++                        candidates.append(
++                            (costs[previous_i][previous_j] + rule.cost, 2, previous_i, previous_j)
++                        )
++
++            if i > 0:
++                candidates.append((costs[i - 1][j] + 1.0, 3, i - 1, j))
++            if j > 0:
++                candidates.append((costs[i][j - 1] + 1.0, 4, i, j - 1))
++
++            costs[i][j] = min(
++                candidates,
++                key=lambda item: (round(item[0], 12), item[1], item[2], item[3]),
++            )[0]
++
++    return costs[-1][-1]
++
++
++def _align_with_traceback(
++    source: tuple[str, ...],
++    target: tuple[str, ...],
++    *,
++    backend: FeatureBackend,
++    equivalences: tuple[SequenceEquivalence, ...],
+ ) -> tuple[float, tuple[AlignmentOperation, ...]]:
+-    """Weighted dynamic-programming alignment with sparse N<->M rules."""
+     rows = len(source) + 1
+     cols = len(target) + 1
+
+@@ -45,24 +104,25 @@ def align_segments(
+
+             candidates: list[tuple[float, int, _Step]] = []
+
++            kind: OperationKind
+             if i > 0 and j > 0:
+                 left = source[i - 1]
+                 right = target[j - 1]
+                 if left == right:
+-                    sub_cost = 0.0
+                     kind = "match"
+                     reason = "exact_segment"
+                     precedence = 0
++                    sub_cost = 0.0
+                 else:
+-                    sub_cost = backend.segment_distance(left, right)
+                     kind = "substitute"
+                     reason = "panphon_feature_substitution"
+                     precedence = 1
++                    sub_cost = backend.segment_distance(left, right)
+
+                 operation = AlignmentOperation(
+                     source=(left,),
+                     target=(right,),
+-                    kind=kind,  # type: ignore[arg-type]
++                    kind=kind,
+                     cost=sub_cost,
+                     reason=reason,
+                 )
+@@ -75,11 +135,10 @@ def align_segments(
+                 )
+
+             for rule in equivalences:
+-                orientations = (
++                for left_sequence, right_sequence in (
+                     (rule.left, rule.right),
+                     (rule.right, rule.left),
+-                )
+-                for left_sequence, right_sequence in orientations:
++                ):
+                     if _suffix_matches(source, i, left_sequence) and _suffix_matches(
+                         target, j, right_sequence
+                     ):
+@@ -96,12 +155,7 @@ def align_segments(
+                             (
+                                 costs[previous_i][previous_j] + rule.cost,
+                                 2,
+-                                _Step(
+-                                    previous_i,
+-                                    previous_j,
+-                                    operation,
+-                                    2,
+-                                ),
++                                _Step(previous_i, previous_j, operation, 2),
+                             )
+                         )
+
+@@ -113,13 +167,7 @@ def align_segments(
+                     cost=1.0,
+                     reason="segment_deletion",
+                 )
+-                candidates.append(
+-                    (
+-                        costs[i - 1][j] + 1.0,
+-                        3,
+-                        _Step(i - 1, j, operation, 3),
+-                    )
+-                )
++                candidates.append((costs[i - 1][j] + 1.0, 3, _Step(i - 1, j, operation, 3)))
+
+             if j > 0:
+                 operation = AlignmentOperation(
+@@ -129,13 +177,7 @@ def align_segments(
+                     cost=1.0,
+                     reason="segment_insertion",
+                 )
+-                candidates.append(
+-                    (
+-                        costs[i][j - 1] + 1.0,
+-                        4,
+-                        _Step(i, j - 1, operation, 4),
+-                    )
+-                )
++                candidates.append((costs[i][j - 1] + 1.0, 4, _Step(i, j - 1, operation, 4)))
+
+             best_cost, _, best_step = min(
+                 candidates,
+@@ -163,3 +205,27 @@ def align_segments(
+
+     operations.reverse()
+     return costs[-1][-1], tuple(operations)
++
++
++def align_segments(
++    source: tuple[str, ...],
++    target: tuple[str, ...],
++    *,
++    backend: FeatureBackend,
++    equivalences: tuple[SequenceEquivalence, ...] = (),
++    explain: bool = False,
++) -> tuple[float, tuple[AlignmentOperation, ...]]:
++    """Align segments, optionally returning the deterministic traceback."""
++    if explain:
++        return _align_with_traceback(
++            source,
++            target,
++            backend=backend,
++            equivalences=equivalences,
++        )
++    return _align_score_only(
++        source,
++        target,
++        backend=backend,
++        equivalences=equivalences,
++    ), ()
+diff --git a/phonodist/api.py b/phonodist/api.py
+index 71b45ad..ec8c314 100644
+--- a/phonodist/api.py
++++ b/phonodist/api.py
+@@ -3,7 +3,8 @@ from __future__ import annotations
+ from functools import lru_cache
+
+ from .alignment import align_segments
+-from .features import PanphonFeatureBackend
++from .errors import UnknownSegmentError
++from .features import FeatureBackend, PanphonFeatureBackend
+ from .model import DistanceResult, LanguageProfile, ParsedPronunciation
+ from .normalize import normalize_ipa
+ from .profiles import get_profile, normalize_language_tag
+@@ -24,6 +25,22 @@ def _resolve_profile(language: str | None) -> LanguageProfile | None:
+     return get_profile(language)
+
+
++def _validate_segments(
++    parsed: ParsedPronunciation,
++    backend: FeatureBackend,
++    *,
++    pronunciation: str,
++    language: str | None,
++) -> None:
++    for index, segment in enumerate(parsed.segments):
++        if not backend.has_segment(segment):
++            profile = f" for profile {language}" if language is not None else ""
++            raise UnknownSegmentError(
++                f"unsupported IPA segment {segment!r} at segment index {index}{profile} "
++                f"in {pronunciation!r} using {backend.name} {backend.version}"
++            )
++
++
+ def parse_ipa(
+     value: str,
+     *,
+@@ -58,9 +75,16 @@ def pronunciation_distance(
+     *,
+     language: str | None = None,
+     ignore_stress: bool | None = None,
++    explain: bool = False,
+ ) -> DistanceResult:
++    """Return feature-align/1 distance, optionally with an alignment explanation."""
++    if ignore_stress is False:
++        raise NotImplementedError(
++            "feature-align/1 is stress-insensitive; stress-aware comparison is not implemented"
++        )
+     profile = _resolve_profile(language)
+     normalized_language = normalize_language_tag(language) if language is not None else None
++    backend = _backend()
+
+     parsed_source = parse_ipa(
+         source,
+@@ -72,12 +96,25 @@ def pronunciation_distance(
+         language=language,
+         ignore_stress=ignore_stress,
+     )
++    _validate_segments(
++        parsed_source,
++        backend,
++        pronunciation=source,
++        language=normalized_language,
++    )
++    _validate_segments(
++        parsed_target,
++        backend,
++        pronunciation=target,
++        language=normalized_language,
++    )
+
+     raw_cost, operations = align_segments(
+         parsed_source.segments,
+         parsed_target.segments,
+-        backend=_backend(),
++        backend=backend,
+         equivalences=profile.sequence_equivalences if profile is not None else (),
++        explain=explain,
+     )
+
+     denominator = float(max(len(parsed_source.segments), len(parsed_target.segments)))
+@@ -95,4 +132,7 @@ def pronunciation_distance(
+         metric_version=_METRIC_VERSION,
+         language=normalized_language,
+         profile_version=profile.version if profile is not None else None,
++        backend=backend.name,
++        backend_version=backend.version,
++        feature_set=backend.feature_set,
+     )
+diff --git a/phonodist/cli.py b/phonodist/cli.py
+index 19f0ec9..5cb1e29 100644
+--- a/phonodist/cli.py
++++ b/phonodist/cli.py
+@@ -2,10 +2,12 @@ from __future__ import annotations
+
+ import argparse
+ import json
+-from dataclasses import asdict
+ from collections.abc import Sequence
++from dataclasses import asdict
+
++from . import __version__
+ from .api import pronunciation_distance
++from .errors import PhonodistError
+
+
+ def _build_parser() -> argparse.ArgumentParser:
+@@ -13,17 +15,13 @@ def _build_parser() -> argparse.ArgumentParser:
+         prog="phonodist",
+         description="Language-aware IPA pronunciation distance.",
+     )
++    parser.add_argument("--version", action="version", version=__version__)
+     subparsers = parser.add_subparsers(dest="command", required=True)
+
+     compare = subparsers.add_parser("compare", help="compare two IPA pronunciations")
+     compare.add_argument("language", help="language/profile tag, e.g. de-DE")
+     compare.add_argument("source", help="source IPA")
+     compare.add_argument("target", help="target IPA")
+-    compare.add_argument(
+-        "--keep-stress",
+-        action="store_true",
+-        help="retain IPA stress marks instead of broad stress-insensitive comparison",
+-    )
+     compare.add_argument("--explain", action="store_true", help="print alignment operations")
+     compare.add_argument("--json", action="store_true", help="emit JSON")
+
+@@ -37,12 +35,17 @@ def main(argv: Sequence[str] | None = None) -> int:
+     if args.command != "compare":
+         parser.error(f"unsupported command: {args.command}")
+
+-    result = pronunciation_distance(
+-        args.source,
+-        args.target,
+-        language=args.language,
+-        ignore_stress=not args.keep_stress,
+-    )
++    try:
++        result = pronunciation_distance(
++            args.source,
++            args.target,
++            language=args.language,
++            explain=args.explain,
++        )
++    except PhonodistError as error:
++        parser.exit(2, f"phonodist: {error}\n")
++    except NotImplementedError as error:
++        parser.exit(2, f"phonodist: {error}\n")
+
+     if args.json:
+         print(json.dumps(asdict(result), ensure_ascii=False, indent=2))
+@@ -51,6 +54,7 @@ def main(argv: Sequence[str] | None = None) -> int:
+     print(f"distance: {result.distance:.6f}")
+     print(f"raw_cost: {result.raw_cost:.6f}")
+     print(f"metric: {result.metric}/{result.metric_version}")
++    print(f"backend: {result.backend}/{result.backend_version} ({result.feature_set})")
+     if result.language is not None:
+         print(f"profile: {result.language}/{result.profile_version}")
+
+diff --git a/phonodist/data/profiles/de-DE.toml b/phonodist/data/profiles/de-DE.toml
+index 45e57f9..4a0d009 100644
+--- a/phonodist/data/profiles/de-DE.toml
++++ b/phonodist/data/profiles/de-DE.toml
+@@ -20,33 +20,30 @@ inventory = [
+ sources = [
+   "PanPhon feature system: https://github.com/dmort27/panphon",
+   "PHOIBLE German inventories, research cross-check only: https://phoible.org/languages/stan1295",
++  "Kohler and Rodgers, Schwa deletion in German read and spontaneous speech: https://www.ipds.uni-kiel.de/kjk/pub_exx/aipuk35/kkjr.pdf"
+ ]
+
+-[[aliases]]
+-input = "t͜s"
+-canonical = "t͡s"
+-reason = "de-DE:tie-bar-variant"
+-
+-[[aliases]]
+-input = "ts"
+-canonical = "t͡s"
++[[sequence_equivalences]]
++left = ["t", "s"]
++right = ["t͡s"]
++cost = 0.0
+ reason = "de-DE:affricate-notation"
+
+-[[aliases]]
+-input = "p͜f"
+-canonical = "p͡f"
+-reason = "de-DE:tie-bar-variant"
+-
+-[[aliases]]
+-input = "pf"
+-canonical = "p͡f"
++[[sequence_equivalences]]
++left = ["p", "f"]
++right = ["p͡f"]
++cost = 0.0
+ reason = "de-DE:affricate-notation"
+
+-[[aliases]]
+-input = "t͜ʃ"
+-canonical = "t͡ʃ"
+-reason = "de-DE:tie-bar-variant"
++[[sequence_equivalences]]
++left = ["t", "ʃ"]
++right = ["t͡ʃ"]
++cost = 0.0
++reason = "de-DE:affricate-notation"
+
++# Heuristic v1 alignment cost. The linguistic equivalence is sourced;
++# the numeric cost is an engineering parameter to be calibrated against
++# reviewed benchmark examples.
+ [[sequence_equivalences]]
+ left = ["ə", "n"]
+ right = ["n̩"]
+diff --git a/phonodist/features.py b/phonodist/features.py
+index 7bfa8eb..6516ba2 100644
+--- a/phonodist/features.py
++++ b/phonodist/features.py
+@@ -1,6 +1,7 @@
+ from __future__ import annotations
+
+ from functools import lru_cache
++from importlib.metadata import version
+ from typing import Protocol
+
+ import panphon
+@@ -9,9 +10,57 @@ from .errors import UnknownSegmentError
+
+
+ class FeatureBackend(Protocol):
++    @property
++    def name(self) -> str: ...
++
++    @property
++    def version(self) -> str: ...
++
++    @property
++    def feature_set(self) -> str: ...
++
++    def has_segment(self, segment: str) -> bool: ...
++
+     def segment_distance(self, left: str, right: str) -> float: ...
+
+
++@lru_cache(maxsize=4096)
++def _vector(table: panphon.FeatureTable, segment: str) -> tuple[int, ...]:
++    if not table.seg_known(segment):
++        raise UnknownSegmentError(f"PanPhon does not recognize {segment!r} as one IPA segment")
++
++    vectors = table.word_to_vector_list(segment, numeric=True)
++    if len(vectors) != 1:
++        raise UnknownSegmentError(
++            f"PanPhon does not recognize {segment!r} as exactly one IPA segment"
++        )
++    return tuple(int(value) for value in vectors[0])
++
++
++@lru_cache(maxsize=16384)
++def _segment_distance(
++    table: panphon.FeatureTable,
++    left: str,
++    right: str,
++) -> float:
++    left_vector = _vector(table, left)
++    right_vector = _vector(table, right)
++
++    if left == right:
++        return 0.0
++    if len(left_vector) != len(right_vector) or not left_vector:
++        raise UnknownSegmentError(f"incompatible feature vectors for {left!r} and {right!r}")
++
++    # PanPhon uses -1, 0, +1 feature values. Opposite specified values have
++    # difference 2; specified versus unspecified has difference 1.
++    cost = sum(
++        abs(left_value - right_value) / 2.0
++        for left_value, right_value in zip(left_vector, right_vector, strict=True)
++    ) / len(left_vector)
++
++    return max(0.0, min(1.0, float(cost)))
++
++
+ class PanphonFeatureBackend:
+     """PanPhon-backed segment feature distance.
+
+@@ -19,34 +68,18 @@ class PanphonFeatureBackend:
+     a normalized unweighted feature difference in [0, 1].
+     """
+
+-    def __init__(self) -> None:
+-        self._table = panphon.FeatureTable()
++    name = "panphon"
++    feature_set = "spe+"
+
+-    @lru_cache(maxsize=4096)
+-    def vector(self, segment: str) -> tuple[int, ...]:
+-        vectors = self._table.word_to_vector_list(segment, numeric=True)
+-        if len(vectors) != 1:
+-            raise UnknownSegmentError(
+-                f"PanPhon does not recognize {segment!r} as exactly one IPA segment"
+-            )
+-        return tuple(int(value) for value in vectors[0])
+-
+-    @lru_cache(maxsize=16384)
+-    def segment_distance(self, left: str, right: str) -> float:
+-        if left == right:
+-            return 0.0
+-
+-        left_vector = self.vector(left)
+-        right_vector = self.vector(right)
++    def __init__(self) -> None:
++        self.version = version("panphon")
++        self._table = panphon.FeatureTable(feature_set=self.feature_set)
+
+-        if len(left_vector) != len(right_vector) or not left_vector:
+-            raise UnknownSegmentError(f"incompatible feature vectors for {left!r} and {right!r}")
++    def has_segment(self, segment: str) -> bool:
++        return bool(self._table.seg_known(segment))
+
+-        # PanPhon uses -1, 0, +1 feature values. Opposite specified values have
+-        # difference 2; specified vs unspecified has difference 1.
+-        cost = sum(
+-            abs(left_value - right_value) / 2.0
+-            for left_value, right_value in zip(left_vector, right_vector)
+-        ) / len(left_vector)
++    def vector(self, segment: str) -> tuple[int, ...]:
++        return _vector(self._table, segment)
+
+-        return max(0.0, min(1.0, float(cost)))
++    def segment_distance(self, left: str, right: str) -> float:
++        return _segment_distance(self._table, left, right)
+diff --git a/phonodist/model.py b/phonodist/model.py
+index 5d7c074..08dc407 100644
+--- a/phonodist/model.py
++++ b/phonodist/model.py
+@@ -78,3 +78,6 @@ class DistanceResult:
+     metric_version: str
+     language: str | None
+     profile_version: str | None
++    backend: str
++    backend_version: str
++    feature_set: str
+diff --git a/phonodist/profiles.py b/phonodist/profiles.py
+index 1d3e29e..6c659f5 100644
+--- a/phonodist/profiles.py
++++ b/phonodist/profiles.py
+@@ -1,12 +1,13 @@
+ from __future__ import annotations
+
++from functools import cache
+ from importlib.resources import files
+ from typing import Any
+
+ try:
+-    import tomllib
++    import tomllib  # type: ignore[import-not-found]
+ except ModuleNotFoundError:  # pragma: no cover - Python 3.10
+-    import tomli as tomllib  # type: ignore[no-redef]
++    import tomli as tomllib
+
+ from .errors import ProfileValidationError, UnknownLanguageProfileError
+ from .model import AliasRule, LanguageProfile, SequenceEquivalence
+@@ -39,47 +40,87 @@ def _as_string_tuple(value: Any, field: str) -> tuple[str, ...]:
+     return tuple(value)
+
+
++def _required_string(value: Any, field: str) -> str:
++    if not isinstance(value, str) or not value:
++        raise ProfileValidationError(f"{field} must be a non-empty string")
++    return value
++
++
++def _profile_from_raw(raw: Any, language: str) -> LanguageProfile:
++    if not isinstance(raw, dict):
++        raise ProfileValidationError("profile data must be a table")
++    if raw.get("schema_version") != 1:
++        raise ProfileValidationError("schema_version must be 1")
++    profile_id = _required_string(raw.get("id"), "id")
++    if profile_id != language:
++        raise ProfileValidationError(
++            f"profile id {profile_id!r} does not match requested language {language!r}"
++        )
++    profile_version = _required_string(raw.get("version"), "version")
++    name = _required_string(raw.get("name"), "name")
++
++    aliases_value = raw.get("aliases", [])
++    if not isinstance(aliases_value, list):
++        raise ProfileValidationError("aliases must be a list")
++    aliases: list[AliasRule] = []
++    alias_inputs: set[str] = set()
++    for item in aliases_value:
++        if not isinstance(item, dict):
++            raise ProfileValidationError("aliases must contain tables")
++        alias_input = _required_string(item.get("input"), "aliases.input")
++        canonical = _required_string(item.get("canonical"), "aliases.canonical")
++        reason = _required_string(item.get("reason"), "aliases.reason")
++        if alias_input in alias_inputs:
++            raise ProfileValidationError(f"duplicate alias input: {alias_input!r}")
++        alias_inputs.add(alias_input)
++        aliases.append(AliasRule(input=alias_input, canonical=canonical, reason=reason))
++
++    equivalences_value = raw.get("sequence_equivalences", [])
++    if not isinstance(equivalences_value, list):
++        raise ProfileValidationError("sequence_equivalences must be a list")
++    equivalences: list[SequenceEquivalence] = []
++    for item in equivalences_value:
++        if not isinstance(item, dict):
++            raise ProfileValidationError("sequence_equivalences must contain tables")
++        left = _as_string_tuple(item.get("left"), "sequence_equivalences.left")
++        right = _as_string_tuple(item.get("right"), "sequence_equivalences.right")
++        if not left and not right:
++            raise ProfileValidationError("sequence equivalence cannot have two empty sides")
++        cost_value = item.get("cost")
++        if not isinstance(cost_value, (int, float)) or isinstance(cost_value, bool):
++            raise ProfileValidationError("sequence equivalence cost must be a number")
++        cost = float(cost_value)
++        if not 0.0 <= cost <= 1.0:
++            raise ProfileValidationError(f"sequence equivalence cost must be in [0, 1]: {cost}")
++        reason = _required_string(item.get("reason"), "sequence_equivalences.reason")
++        equivalences.append(SequenceEquivalence(left=left, right=right, cost=cost, reason=reason))
++
++    default_ignore_stress = raw.get("default_ignore_stress", True)
++    if not isinstance(default_ignore_stress, bool):
++        raise ProfileValidationError("default_ignore_stress must be a boolean")
++
++    return LanguageProfile(
++        id=profile_id,
++        version=profile_version,
++        name=name,
++        default_ignore_stress=default_ignore_stress,
++        inventory=_as_string_tuple(raw.get("inventory", []), "inventory"),
++        aliases=tuple(aliases),
++        sequence_equivalences=tuple(equivalences),
++        sources=_as_string_tuple(raw.get("sources", []), "sources"),
++    )
++
++
+ def get_profile(language: str) -> LanguageProfile:
+-    language = normalize_language_tag(language)
++    return _load_profile(normalize_language_tag(language))
++
++
++@cache
++def _load_profile(language: str) -> LanguageProfile:
+     if language not in available_profiles():
+         raise UnknownLanguageProfileError(f"no bundled profile for {language!r}")
+
+-    path = files("phonodist").joinpath("data", "profiles", f"{language}.toml")
++    path = files("phonodist").joinpath("data").joinpath("profiles").joinpath(f"{language}.toml")
+     with path.open("rb") as handle:
+         raw = tomllib.load(handle)
+-
+-    try:
+-        aliases = tuple(
+-            AliasRule(
+-                input=str(item["input"]),
+-                canonical=str(item["canonical"]),
+-                reason=str(item["reason"]),
+-            )
+-            for item in raw.get("aliases", [])
+-        )
+-        equivalences = tuple(
+-            SequenceEquivalence(
+-                left=_as_string_tuple(item["left"], "sequence_equivalences.left"),
+-                right=_as_string_tuple(item["right"], "sequence_equivalences.right"),
+-                cost=float(item["cost"]),
+-                reason=str(item["reason"]),
+-            )
+-            for item in raw.get("sequence_equivalences", [])
+-        )
+-
+-        for rule in equivalences:
+-            if not (0.0 <= rule.cost <= 1.0):
+-                raise ProfileValidationError(f"sequence equivalence cost must be in [0, 1]: {rule}")
+-
+-        return LanguageProfile(
+-            id=str(raw["id"]),
+-            version=str(raw["version"]),
+-            name=str(raw["name"]),
+-            default_ignore_stress=bool(raw.get("default_ignore_stress", True)),
+-            inventory=_as_string_tuple(raw.get("inventory", []), "inventory"),
+-            aliases=aliases,
+-            sequence_equivalences=equivalences,
+-            sources=_as_string_tuple(raw.get("sources", []), "sources"),
+-        )
+-    except KeyError as exc:
+-        raise ProfileValidationError(f"missing required profile field: {exc}") from exc
++    return _profile_from_raw(raw, language)
+diff --git a/pyproject.toml b/pyproject.toml
+index e53a753..d311aa0 100644
+--- a/pyproject.toml
++++ b/pyproject.toml
+@@ -11,6 +11,17 @@ license = "Apache-2.0"
+ authors = [{name = "Holger Nahrstaedt"}]
+ keywords = ["ipa", "phonetics", "phonology", "pronunciation", "distance", "g2p", "tts"]
+ dynamic = ["version"]
++classifiers = [
++    "Development Status :: 3 - Alpha",
++    "Operating System :: OS Independent",
++    "Programming Language :: Python :: 3",
++    "Programming Language :: Python :: 3.10",
++    "Programming Language :: Python :: 3.11",
++    "Programming Language :: Python :: 3.12",
++    "Programming Language :: Python :: 3.13",
++    "Topic :: Text Processing :: Linguistic",
++]
++license-files = ["LICENSE", "THIRD_PARTY_LICENSES.md"]
+ dependencies = [
+     "panphon>=0.22.2,<0.23",
+     "tomli>=2; python_version < '3.11'",
+@@ -29,10 +40,9 @@ dev = [
+ phonodist = "phonodist.cli:main"
+
+ [project.urls]
+-# Fill these after creating the repository.
+-# Repository = "https://github.com/buchwandler/phonodist"
+-# Issues = "https://github.com/buchwandler/phonodist/issues"
+-
++Homepage = "https://github.com/buchwandler/phonodist"
++Repository = "https://github.com/buchwandler/phonodist"
++Issues = "https://github.com/buchwandler/phonodist/issues"
+ # Intentionally no src/ layer. The import package lives at ./phonodist.
+ [tool.setuptools.packages.find]
+ where = ["."]
+diff --git a/tests/test_cli.py b/tests/test_cli.py
+new file mode 100644
+index 0000000..e34c377
+--- /dev/null
++++ b/tests/test_cli.py
+@@ -0,0 +1,38 @@
++from __future__ import annotations
++
++import json
++
++import pytest
++
++from phonodist.cli import main
++
++
++def test_cli_json_and_explain(capsys: pytest.CaptureFixture[str]) -> None:
++    assert main(["compare", "de-DE", "n̩", "ən", "--json", "--explain"]) == 0
++
++    output = json.loads(capsys.readouterr().out)
++    assert output["backend"] == "panphon"
++    assert output["operations"]
++
++
++def test_cli_version(capsys: pytest.CaptureFixture[str]) -> None:
++    with pytest.raises(SystemExit) as error:
++        main(["--version"])
++
++    assert error.value.code == 0
++    assert capsys.readouterr().out.strip()
++
++
++def test_cli_unknown_profile_is_concise(capsys: pytest.CaptureFixture[str]) -> None:
++    with pytest.raises(SystemExit) as error:
++        main(["compare", "en-US", "p", "b"])
++
++    assert error.value.code == 2
++    assert capsys.readouterr().err.startswith("phonodist: no bundled profile")
++
++
++def test_cli_rejects_removed_keep_stress_flag() -> None:
++    with pytest.raises(SystemExit) as error:
++        main(["compare", "de-DE", "ˈa", "a", "--keep-stress"])
++
++    assert error.value.code == 2
+diff --git a/tests/test_de_de.py b/tests/test_de_de.py
+index 63f8288..0103ede 100644
+--- a/tests/test_de_de.py
++++ b/tests/test_de_de.py
+@@ -1,22 +1,30 @@
+ from __future__ import annotations
+
+-from phonodist import pronunciation_distance
++from phonodist import parse_ipa, pronunciation_distance
+
+
+ def test_syllabic_nasal_equivalence_is_low_cost_and_symmetric() -> None:
+-    forward = pronunciation_distance("n̩", "ən", language="de-DE")
+-    reverse = pronunciation_distance("ən", "n̩", language="de-DE")
++    forward = pronunciation_distance("n̩", "ən", language="de-DE", explain=True)
++    reverse = pronunciation_distance("ən", "n̩", language="de-DE", explain=True)
+
+     assert forward.distance == reverse.distance
+     assert forward.raw_cost == 0.10
+     assert any(op.kind == "sequence_equivalence" for op in forward.operations)
+
+
++def test_german_affricate_notation_is_equivalent() -> None:
++    assert parse_ipa("t͜s", language="de-DE").segments == ("t͡s",)
++    for left, right in (("ts", "t͡s"), ("pf", "p͡f"), ("tʃ", "t͡ʃ")):
++        result = pronunciation_distance(left, right, language="de-DE", explain=True)
++        assert result.distance == 0.0
++        assert any(op.kind == "sequence_equivalence" for op in result.operations)
++
++
+ def test_luftwaffenstuetzpunkt_regression() -> None:
+     lexicon = "ˈlʊftvafn̩ˌʃtʏt͡spʊŋkt"
+     espeak = "lˈʊftvˌafənʃtˌʏt\u200dspʊŋkt"
+
+-    result = pronunciation_distance(lexicon, espeak, language="de-DE")
++    result = pronunciation_distance(lexicon, espeak, language="de-DE", explain=True)
+
+     assert result.distance < 0.10
+     assert any(op.kind == "sequence_equivalence" for op in result.operations)
+diff --git a/tests/test_distance.py b/tests/test_distance.py
+index 6b8fc20..bccf6ee 100644
+--- a/tests/test_distance.py
++++ b/tests/test_distance.py
+@@ -2,13 +2,26 @@ from __future__ import annotations
+
+ import pytest
+
+-from phonodist import pronunciation_distance
++from phonodist import UnknownSegmentError, pronunciation_distance
+
+
+ def test_identity_is_zero() -> None:
+     result = pronunciation_distance("hallo", "hallo", language="de-DE")
+     assert result.distance == 0.0
+     assert result.raw_cost == 0.0
++    assert result.operations == ()
++
++
++def test_result_contains_backend_provenance() -> None:
++    result = pronunciation_distance("p", "b", language="de-DE")
++
++    assert result.metric == "feature-align"
++    assert result.metric_version == "1"
++    assert result.language == "de-DE"
++    assert result.profile_version == "1"
++    assert result.backend == "panphon"
++    assert result.backend_version
++    assert result.feature_set == "spe+"
+
+
+ @pytest.mark.parametrize(
+@@ -23,3 +36,27 @@ def test_default_metric_is_symmetric(left: str, right: str) -> None:
+     forward = pronunciation_distance(left, right, language="de-DE")
+     reverse = pronunciation_distance(right, left, language="de-DE")
+     assert forward.distance == pytest.approx(reverse.distance)
++
++
++@pytest.mark.parametrize(("left", "right"), [("#", "#"), ("#", ""), ("a\u0301", "a")])
++def test_unknown_segments_are_rejected_before_alignment(left: str, right: str) -> None:
++    with pytest.raises(UnknownSegmentError):
++        pronunciation_distance(left, right, language="de-DE")
++
++
++def test_empty_inputs_are_defined() -> None:
++    assert pronunciation_distance("", "").distance == 0.0
++    assert pronunciation_distance("a", "").distance == 1.0
++    assert pronunciation_distance("", "a").distance == 1.0
++
++
++def test_contrastive_variants_are_ordered() -> None:
++    reference = "bat"
++    close = pronunciation_distance(reference, "pat", language="de-DE").distance
++    far = pronunciation_distance(reference, "kit", language="de-DE").distance
++    assert close < far
++
++
++def test_retained_stress_is_not_supported() -> None:
++    with pytest.raises(NotImplementedError, match="stress-insensitive"):
++        pronunciation_distance("ˈa", "a", ignore_stress=False)
+diff --git a/tests/test_features.py b/tests/test_features.py
+index 8c1d2ad..4cc87df 100644
+--- a/tests/test_features.py
++++ b/tests/test_features.py
+@@ -1,9 +1,29 @@
+ from __future__ import annotations
+
+-from phonodist import segment_distance
++import pytest
++
++from phonodist import UnknownSegmentError, segment_distance
++from phonodist.features import PanphonFeatureBackend
+
+
+ def test_feature_distance_orders_nearby_segments() -> None:
+     assert segment_distance("p", "b") < segment_distance("p", "a")
+     assert segment_distance("t", "d") < segment_distance("t", "a")
+     assert segment_distance("ʊ", "u") < segment_distance("ʊ", "a")
++
++
++def test_unknown_segment_is_rejected_before_vector_extraction() -> None:
++    backend = PanphonFeatureBackend()
++
++    assert backend.has_segment("p")
++    assert not backend.has_segment("#")
++    with pytest.raises(UnknownSegmentError):
++        backend.vector("a\u0301")
++
++
++def test_backend_provenance_is_explicit() -> None:
++    backend = PanphonFeatureBackend()
++
++    assert backend.name == "panphon"
++    assert backend.version
++    assert backend.feature_set == "spe+"
+diff --git a/tests/test_normalize.py b/tests/test_normalize.py
+index f30f70d..05cfd2f 100644
+--- a/tests/test_normalize.py
++++ b/tests/test_normalize.py
+@@ -15,7 +15,13 @@ def test_stress_is_ignored_by_default() -> None:
+     assert left.segments == right.segments
+
+
+-def test_german_affricate_alias_is_canonicalized() -> None:
+-    tied = parse_ipa("t͡s", language="de-DE")
+-    untied = parse_ipa("ts", language="de-DE")
+-    assert tied.segments == untied.segments == ("t͡s",)
++def test_nfc_and_nfd_diacritics_are_equivalent() -> None:
++    nfc = parse_ipa("ã", language=None)
++    nfd = parse_ipa("a\u0303", language=None)
++    assert nfc.normalized == nfd.normalized
++    assert nfc.segments == nfd.segments == ("ã",)
++
++
++def test_supported_ipa_diacritics_are_single_segments() -> None:
++    for value in ("n̩", "ã", "aː", "tʰ"):
++        assert len(parse_ipa(value).segments) == 1
+diff --git a/tests/test_packaging.py b/tests/test_packaging.py
+new file mode 100644
+index 0000000..386a7c5
+--- /dev/null
++++ b/tests/test_packaging.py
+@@ -0,0 +1,12 @@
++from __future__ import annotations
++
++from importlib.resources import files
++
++import phonodist
++
++
++def test_profile_and_type_marker_are_package_data() -> None:
++    package = files("phonodist")
++    assert package.joinpath("data", "profiles", "de-DE.toml").is_file()
++    assert package.joinpath("py.typed").is_file()
++    assert phonodist.__version__
+diff --git a/tests/test_profiles.py b/tests/test_profiles.py
+new file mode 100644
+index 0000000..299bd37
+--- /dev/null
++++ b/tests/test_profiles.py
+@@ -0,0 +1,57 @@
++from __future__ import annotations
++
++import pytest
++
++from phonodist import (
++    ProfileValidationError,
++    UnknownLanguageProfileError,
++    available_profiles,
++    get_profile,
++)
++from phonodist.profiles import _load_profile, _profile_from_raw
++
++
++def test_profile_aliases_are_normalized_and_cached() -> None:
++    assert available_profiles() == ("de-DE",)
++    profile = get_profile("de-DE")
++
++    assert profile is get_profile("de")
++    assert profile is get_profile("de_de")
++
++
++def test_unknown_profile_is_rejected() -> None:
++    with pytest.raises(UnknownLanguageProfileError):
++        get_profile("en-US")
++
++
++def test_profile_validation_rejects_empty_sequence_transition() -> None:
++    raw = {"schema_version": 1, "id": "de-DE", "version": "1", "name": "German"}
++
++    with pytest.raises(ProfileValidationError, match="two empty sides"):
++        _profile_from_raw(
++            {**raw, "sequence_equivalences": [{"left": [], "right": [], "cost": 0}]},
++            "de-DE",
++        )
++
++
++def test_profile_validation_rejects_duplicate_aliases() -> None:
++    raw = {
++        "schema_version": 1,
++        "id": "de-DE",
++        "version": "1",
++        "name": "German",
++        "aliases": [
++            {"input": "x", "canonical": "y", "reason": "one"},
++            {"input": "x", "canonical": "z", "reason": "two"},
++        ],
++    }
++
++    with pytest.raises(ProfileValidationError, match="duplicate alias"):
++        _profile_from_raw(raw, "de-DE")
++
++
++def test_profile_cache_can_be_cleared() -> None:
++    get_profile("de-DE")
++    assert _load_profile.cache_info().currsize >= 1
++    _load_profile.cache_clear()
++    assert _load_profile.cache_info().currsize == 0

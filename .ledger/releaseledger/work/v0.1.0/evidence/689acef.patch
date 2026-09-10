@@ -1,0 +1,573 @@
+ .github/workflows/python-publish.yml | 92 ++++++++++++++++++++++++++++++++++--
+ .github/workflows/tests.yml          |  6 +--
+ .ledger/releaseledger/config.toml    |  8 ++--
+ MANIFEST.in                          |  2 +-
+ README.md                            | 22 +++++++--
+ docs/METRIC.md                       |  6 +++
+ docs/RELEASING.md                    | 15 ++++++
+ phonodist/normalize.py               |  6 ++-
+ phonodist/profiles.py                | 14 ++++++
+ pyproject.toml                       |  6 ++-
+ tests/test_cli.py                    | 16 +++++++
+ tests/test_distance.py               | 37 +++++++++++++++
+ tests/test_normalize.py              | 27 ++++++++++-
+ tests/test_packaging.py              |  9 ++++
+ tests/test_profiles.py               | 42 ++++++++++++++++
+ 15 files changed, 289 insertions(+), 19 deletions(-)
+
+diff --git a/.github/workflows/python-publish.yml b/.github/workflows/python-publish.yml
+index e31f6c5..7f56ad2 100644
+--- a/.github/workflows/python-publish.yml
++++ b/.github/workflows/python-publish.yml
+@@ -9,20 +9,106 @@ permissions:
+   contents: read
+   id-token: write
+
++
+ jobs:
+-  publish:
++  verify:
++    name: verify (${{ matrix.python-version }})
+     runs-on: ubuntu-latest
++    strategy:
++      fail-fast: false
++      matrix:
++        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
+     steps:
+-      - uses: actions/checkout@v4
++      - uses: actions/checkout@v5
+         with:
+           fetch-depth: 0
+-      - uses: actions/setup-python@v5
++
++      - uses: actions/setup-python@v6
++        with:
++          python-version: ${{ matrix.python-version }}
++
++      - run: python -m pip install --upgrade pip
++      - run: python -m pip install -e ".[dev]"
++      - run: pytest --cov=phonodist --cov-report=term-missing
++      - run: ruff check .
++      - run: mypy phonodist
++
++  build:
++    name: build distributions
++    needs: verify
++    runs-on: ubuntu-latest
++    steps:
++      - uses: actions/checkout@v5
++        with:
++          fetch-depth: 0
++
++      - uses: actions/setup-python@v6
+         with:
+           python-version: "3.13"
++
+       - run: python -m pip install --upgrade pip build
+       - run: python -m build
+       - uses: actions/upload-artifact@v4
+         with:
+           name: python-package
+           path: dist/
++          if-no-files-found: error
++
++  validate:
++    name: validate release artifacts
++    needs: build
++    runs-on: ubuntu-latest
++    steps:
++      - uses: actions/download-artifact@v4
++        with:
++          name: python-package
++          path: dist
++
++      - uses: actions/setup-python@v6
++        with:
++          python-version: "3.13"
++
++      - run: python -m pip install --upgrade pip build twine
++      - name: Verify artifact version
++        shell: bash
++        run: |
++          expected="${GITHUB_REF_NAME#v}"
++          test -f "dist/phonodist-${expected}-py3-none-any.whl"
++          test -f "dist/phonodist-${expected}.tar.gz"
++          python - "${expected}" <<'PY'
++          import sys
++          import zipfile
++          from pathlib import Path
++
++          expected = sys.argv[1]
++          wheel = Path(f"dist/phonodist-{expected}-py3-none-any.whl")
++          with zipfile.ZipFile(wheel) as archive:
++              names = set(archive.namelist())
++          assert "phonodist/py.typed" in names
++          assert "phonodist/data/profiles/de-DE.toml" in names
++          PY
++      - run: python -m twine check dist/*
++      - name: Install and smoke test wheel
++        shell: bash
++        run: |
++          python -m venv /tmp/phonodist-release-check
++          /tmp/phonodist-release-check/bin/python -m pip install dist/phonodist-*-py3-none-any.whl
++          /tmp/phonodist-release-check/bin/python -m pip check
++          /tmp/phonodist-release-check/bin/python -c 'from importlib.metadata import version; import os; assert version("phonodist") == os.environ["GITHUB_REF_NAME"][1:]'
++          /tmp/phonodist-release-check/bin/phonodist --version
++          /tmp/phonodist-release-check/bin/phonodist compare de-DE n̩ ən --explain
++
++  publish:
++    name: publish to PyPI
++    needs: validate
++    runs-on: ubuntu-latest
++    environment: pypi
++    steps:
++      - uses: actions/download-artifact@v4
++        with:
++          name: python-package
++          path: dist
++
+       - uses: pypa/gh-action-pypi-publish@release/v1
++        with:
++          packages-dir: dist/
+diff --git a/.github/workflows/tests.yml b/.github/workflows/tests.yml
+index de30c7e..23da5ea 100644
+--- a/.github/workflows/tests.yml
++++ b/.github/workflows/tests.yml
+@@ -10,14 +10,14 @@ jobs:
+     strategy:
+       fail-fast: false
+       matrix:
+-        python-version: ["3.10", "3.11", "3.12", "3.13"]
++        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
+
+     steps:
+-      - uses: actions/checkout@v4
++      - uses: actions/checkout@v5
+         with:
+           fetch-depth: 0
+
+-      - uses: actions/setup-python@v5
++      - uses: actions/setup-python@v6
+         with:
+           python-version: ${{ matrix.python-version }}
+
+diff --git a/.ledger/releaseledger/config.toml b/.ledger/releaseledger/config.toml
+index 1129e1c..1514fd4 100644
+--- a/.ledger/releaseledger/config.toml
++++ b/.ledger/releaseledger/config.toml
+@@ -10,10 +10,9 @@ code = "rl"
+ # Release defaults.
+
+ [release]
+-default_changelog = "CHANGELOG.md"
++default_changelog = "docs/changelog.md"
+ default_status = "planned"
+-allow_dirty_worktree = true
+-# Changelog build defaults.
++allow_dirty_worktree = false
+
+ [changelog]
+ output = "docs/changelog.md"
+@@ -50,7 +49,6 @@ default_base = "previous_release_tag"
+ default_head = "HEAD"
+ previous_tag_patterns = ["v{version}", "{version}"]
+ include_merges = "nontrivial"
+-require_clean_worktree = false
+-max_commits = 500
++require_clean_worktree = true
+ max_diff_chars_per_commit = 12000
+ candidate_status = "draft"
+diff --git a/MANIFEST.in b/MANIFEST.in
+index a5f74c1..92b8e7c 100644
+--- a/MANIFEST.in
++++ b/MANIFEST.in
+@@ -1,8 +1,8 @@
+ include LICENSE
+ include THIRD_PARTY_LICENSES.md
+ include README.md
++include docs/RELEASING.md
+ recursive-include phonodist/data *.toml
+-recursive-include phonodist *.pyi
+ prune .ledger
+ exclude .codecrate.toml
+ exclude context_*
+diff --git a/README.md b/README.md
+index 68488e2..58b0df2 100644
+--- a/README.md
++++ b/README.md
+@@ -52,7 +52,7 @@ operations explicitly with `explain=True`.
+ ```bash
+ phonodist compare de-DE \
+   'ˈlʊftvafn̩ˌʃtʏt͡spʊŋkt' \
+-  'lˈʊftvˌafənʃtˌʏt\u200dspʊŋkt' \
++  'lˈʊftvˌafənʃtˌʏtspʊŋkt' \
+   --explain
+ ```
+
+@@ -75,9 +75,9 @@ lexicon validation, G2P evaluation, pronunciation regression tests, and
+ investigation of suspicious pronunciation pairs.
+
+ Each result records the metric and metric version, profile and profile version,
+-and PanPhon backend version and feature set. Consumers such as Lexphon should
+-define their own thresholds. See [docs/METRIC.md](docs/METRIC.md) and
+-[docs/PROFILES.md](docs/PROFILES.md).
++and PanPhon backend version and feature set. Consumers such as Lexphon
++should define their own thresholds. See [docs/METRIC.md](https://github.com/buchwandler/phonodist/blob/main/docs/METRIC.md) and
++[docs/PROFILES.md](https://github.com/buchwandler/phonodist/blob/main/docs/PROFILES.md).
+
+ Metric and profile details may evolve during the 0.x series. Changes to metric
+ semantics require a metric version bump. Language-specific rule or cost changes
+@@ -94,6 +94,20 @@ pre-commit run --all-files
+ python -m build
+ ```
+
++## Benchmarking
++
++Run the representative throughput benchmark with a small count during development:
++
++```bash
++python benchmarks/benchmark_distance.py --count 1000
++```
++
++The benchmark compares score-only and explained calls and reports profile load time. Its values are engineering baselines, not calibrated human-perceptual examples. Profile costs remain explicitly tunable parameters until a later calibration study.
++
++## Release publishing
++
++Before pushing a `v0.1.0` tag, configure and verify the PyPI Trusted Publisher for the `pypi` GitHub environment. The publisher must use GitHub Actions OIDC and does not require an API token. See [docs/RELEASING.md](https://github.com/buchwandler/phonodist/blob/main/docs/RELEASING.md).
++
+ ## License
+
+ Apache-2.0. PanPhon is an external MIT-licensed dependency and is not vendored
+diff --git a/docs/METRIC.md b/docs/METRIC.md
+index 7fdb545..9b44e4d 100644
+--- a/docs/METRIC.md
++++ b/docs/METRIC.md
+@@ -39,6 +39,12 @@ This score is not a calibrated human perceptual-distance model. It is a
+ deterministic phonetic-feature comparison intended for validation and
+ ranking.
+
++A zero score means equivalence under the selected normalization and profile rules, not raw-string identity. Stress removal, notation normalization, and profile sequence equivalences can therefore produce zero for different input strings.
++
++## Diagnostic offsets
++
++`ParseDiagnostic.offset` is an index into the normalized working input after outer delimiters and surrounding whitespace have been removed. It is not an index into `ParsedPronunciation.original` when those transformations changed the input.
++
+ ## Stress scope
+
+ `feature-align/1` intentionally ignores primary and secondary stress. Stress-aware or prosodic comparison is outside the v0.1 metric. The public pronunciation-distance API rejects retained-stress scoring instead of treating stress markers as ordinary PanPhon segments.
+diff --git a/docs/RELEASING.md b/docs/RELEASING.md
+new file mode 100644
+index 0000000..0e979d1
+--- /dev/null
++++ b/docs/RELEASING.md
+@@ -0,0 +1,15 @@
++# Releasing phonodist
++
++The `v*` GitHub Actions workflow verifies the supported Python matrix, builds one
++artifact set, validates it, and publishes those exact artifacts to PyPI.
++
++Before pushing a release tag, configure a PyPI Trusted Publisher for:
++
++- repository: `buchwandler/phonodist`;
++- workflow: `.github/workflows/python-publish.yml`;
++- environment: `pypi`;
++- publishing method: GitHub Actions OpenID Connect (OIDC), with no API token.
++
++The PyPI account and GitHub environment are external configuration. Confirm the
++publisher values match the workflow before the first production tag. A TestPyPI
++run is recommended before publishing `v0.1.0`.
+diff --git a/phonodist/normalize.py b/phonodist/normalize.py
+index be40ac2..57c66dc 100644
+--- a/phonodist/normalize.py
++++ b/phonodist/normalize.py
+@@ -2,6 +2,7 @@ from __future__ import annotations
+
+ import unicodedata
+
++from .errors import InvalidIPAError
+ from .model import ParseDiagnostic
+
+ _PRIMARY_STRESS = "ˈ"
+@@ -35,6 +36,9 @@ def normalize_ipa(
+     ignore_stress: bool = True,
+ ) -> tuple[str, tuple[ParseDiagnostic, ...]]:
+     """Normalize IPA representation without applying language-specific rules."""
++    if not isinstance(value, str):
++        raise InvalidIPAError("IPA value must be a string")
++
+     original = value
+     value = unicodedata.normalize("NFC", value.strip())
+     diagnostics: list[ParseDiagnostic] = []
+@@ -99,5 +103,5 @@ def normalize_ipa(
+
+     normalized = unicodedata.normalize("NFC", "".join(output))
+     if not normalized and original.strip():
+-        return normalized, tuple(diagnostics)
++        raise InvalidIPAError("IPA value contains no parseable IPA characters")
+     return normalized, tuple(diagnostics)
+diff --git a/phonodist/profiles.py b/phonodist/profiles.py
+index 6c659f5..66d5355 100644
+--- a/phonodist/profiles.py
++++ b/phonodist/profiles.py
+@@ -1,5 +1,6 @@
+ from __future__ import annotations
+
++import unicodedata
+ from functools import cache
+ from importlib.resources import files
+ from typing import Any
+@@ -46,6 +47,11 @@ def _required_string(value: Any, field: str) -> str:
+     return value
+
+
++def _validate_alias_text(value: str, field: str) -> None:
++    if any(char.isspace() or unicodedata.category(char) == "Cf" for char in value):
++        raise ProfileValidationError(f"{field} must not contain whitespace or format characters")
++
++
+ def _profile_from_raw(raw: Any, language: str) -> LanguageProfile:
+     if not isinstance(raw, dict):
+         raise ProfileValidationError("profile data must be a table")
+@@ -70,6 +76,14 @@ def _profile_from_raw(raw: Any, language: str) -> LanguageProfile:
+         alias_input = _required_string(item.get("input"), "aliases.input")
+         canonical = _required_string(item.get("canonical"), "aliases.canonical")
+         reason = _required_string(item.get("reason"), "aliases.reason")
++        _validate_alias_text(alias_input, "aliases.input")
++        _validate_alias_text(canonical, "aliases.canonical")
++        if alias_input == canonical:
++            raise ProfileValidationError("alias input and canonical value must differ")
++        if any(
++            previous.canonical == alias_input or previous.input == canonical for previous in aliases
++        ):
++            raise ProfileValidationError("aliases must not cascade")
+         if alias_input in alias_inputs:
+             raise ProfileValidationError(f"duplicate alias input: {alias_input!r}")
+         alias_inputs.add(alias_input)
+diff --git a/pyproject.toml b/pyproject.toml
+index d311aa0..0f81a7a 100644
+--- a/pyproject.toml
++++ b/pyproject.toml
+@@ -19,6 +19,7 @@ classifiers = [
+     "Programming Language :: Python :: 3.11",
+     "Programming Language :: Python :: 3.12",
+     "Programming Language :: Python :: 3.13",
++    "Programming Language :: Python :: 3.14",
+     "Topic :: Text Processing :: Linguistic",
+ ]
+ license-files = ["LICENSE", "THIRD_PARTY_LICENSES.md"]
+@@ -34,6 +35,7 @@ dev = [
+     "pytest>=8",
+     "pytest-cov>=5",
+     "ruff>=0.16",
++    "twine>=6",
+ ]
+
+ [project.scripts]
+@@ -42,6 +44,8 @@ phonodist = "phonodist.cli:main"
+ [project.urls]
+ Homepage = "https://github.com/buchwandler/phonodist"
+ Repository = "https://github.com/buchwandler/phonodist"
++Documentation = "https://github.com/buchwandler/phonodist/blob/main/docs/METRIC.md"
++Changelog = "https://github.com/buchwandler/phonodist/blob/main/docs/changelog.md"
+ Issues = "https://github.com/buchwandler/phonodist/issues"
+ # Intentionally no src/ layer. The import package lives at ./phonodist.
+ [tool.setuptools.packages.find]
+@@ -60,7 +64,7 @@ fallback_version = "0+unknown"
+
+ [tool.pytest.ini_options]
+ testpaths = ["tests"]
+-addopts = "-q"
++addopts = "-q --cov-fail-under=85"
+ pythonpath = ["."]
+
+ [tool.ruff]
+diff --git a/tests/test_cli.py b/tests/test_cli.py
+index e34c377..df7be00 100644
+--- a/tests/test_cli.py
++++ b/tests/test_cli.py
+@@ -15,6 +15,22 @@ def test_cli_json_and_explain(capsys: pytest.CaptureFixture[str]) -> None:
+     assert output["operations"]
+
+
++def test_cli_readme_command(capsys: pytest.CaptureFixture[str]) -> None:
++    assert (
++        main(
++            [
++                "compare",
++                "de-DE",
++                "ˈlʊftvafn̩ˌʃtʏt͡spʊŋkt",
++                "lˈʊftvˌafənʃtˌʏtspʊŋkt",
++                "--explain",
++            ]
++        )
++        == 0
++    )
++    assert "distance:" in capsys.readouterr().out
++
++
+ def test_cli_version(capsys: pytest.CaptureFixture[str]) -> None:
+     with pytest.raises(SystemExit) as error:
+         main(["--version"])
+diff --git a/tests/test_distance.py b/tests/test_distance.py
+index bccf6ee..d32d6bd 100644
+--- a/tests/test_distance.py
++++ b/tests/test_distance.py
+@@ -60,3 +60,40 @@ def test_contrastive_variants_are_ordered() -> None:
+ def test_retained_stress_is_not_supported() -> None:
+     with pytest.raises(NotImplementedError, match="stress-insensitive"):
+         pronunciation_distance("ˈa", "a", ignore_stress=False)
++
++
++@pytest.mark.parametrize(
++    ("left", "right", "language"),
++    [
++        ("p", "b", "de-DE"),
++        ("ən", "n̩", "de-DE"),
++        ("t͡s", "ts", "de-DE"),
++        ("a", "e", None),
++        ("a", "", None),
++    ],
++)
++def test_score_only_matches_traceback(
++    left: str,
++    right: str,
++    language: str | None,
++) -> None:
++    score_only = pronunciation_distance(left, right, language=language)
++    explained = pronunciation_distance(left, right, language=language, explain=True)
++
++    assert explained.raw_cost == pytest.approx(score_only.raw_cost)
++    assert explained.distance == pytest.approx(score_only.distance)
++    assert sum(operation.cost for operation in explained.operations) == pytest.approx(
++        explained.raw_cost
++    )
++
++
++def test_traceback_tie_breaking_is_deterministic() -> None:
++    first = pronunciation_distance("ab", "ba", explain=True)
++    second = pronunciation_distance("ab", "ba", explain=True)
++    assert first.operations == second.operations
++
++
++def test_universal_mode_provenance_is_explicit() -> None:
++    result = pronunciation_distance("p", "b")
++    assert result.language is None
++    assert result.profile_version is None
+diff --git a/tests/test_normalize.py b/tests/test_normalize.py
+index 05cfd2f..fae0a5c 100644
+--- a/tests/test_normalize.py
++++ b/tests/test_normalize.py
+@@ -1,6 +1,8 @@
+ from __future__ import annotations
+
+-from phonodist import parse_ipa
++import pytest
++
++from phonodist import InvalidIPAError, parse_ipa
+
+
+ def test_zero_width_joiner_is_ignored() -> None:
+@@ -15,6 +17,19 @@ def test_stress_is_ignored_by_default() -> None:
+     assert left.segments == right.segments
+
+
++def test_diagnostic_offsets_reference_normalized_working_input() -> None:
++    parsed = parse_ipa(" / a b /", language=None)
++    assert parsed.original == " / a b /"
++    assert parsed.normalized == "ab"
++    assert parsed.diagnostics[0].offset == 1
++
++
++def test_diagnostic_offset_excludes_outer_delimiters() -> None:
++    parsed = parse_ipa("/ˈa/", language=None)
++    assert parsed.diagnostics[0].offset == 0
++    assert parsed.diagnostics[0].text == "ˈ"
++
++
+ def test_nfc_and_nfd_diacritics_are_equivalent() -> None:
+     nfc = parse_ipa("ã", language=None)
+     nfd = parse_ipa("a\u0303", language=None)
+@@ -25,3 +40,13 @@ def test_nfc_and_nfd_diacritics_are_equivalent() -> None:
+ def test_supported_ipa_diacritics_are_single_segments() -> None:
+     for value in ("n̩", "ã", "aː", "tʰ"):
+         assert len(parse_ipa(value).segments) == 1
++
++
++@pytest.mark.parametrize("value", ["ˈ", "\u200d", "[ˈ]"])
++def test_malformed_ipa_raises_invalid_ipa_error(value: str) -> None:
++    with pytest.raises(InvalidIPAError, match="no parseable IPA"):
++        parse_ipa(value, language=None)
++
++
++def test_empty_ipa_remains_defined() -> None:
++    assert parse_ipa("", language=None).normalized == ""
+diff --git a/tests/test_packaging.py b/tests/test_packaging.py
+index 386a7c5..49a89a5 100644
+--- a/tests/test_packaging.py
++++ b/tests/test_packaging.py
+@@ -10,3 +10,12 @@ def test_profile_and_type_marker_are_package_data() -> None:
+     assert package.joinpath("data", "profiles", "de-DE.toml").is_file()
+     assert package.joinpath("py.typed").is_file()
+     assert phonodist.__version__
++
++
++def test_console_script_metadata_is_packaged() -> None:
++    from importlib.metadata import entry_points
++
++    scripts = entry_points(group="console_scripts")
++    assert any(
++        entry.name == "phonodist" and entry.value == "phonodist.cli:main" for entry in scripts
++    )
+diff --git a/tests/test_profiles.py b/tests/test_profiles.py
+index 299bd37..ea700f7 100644
+--- a/tests/test_profiles.py
++++ b/tests/test_profiles.py
+@@ -50,6 +50,48 @@ def test_profile_validation_rejects_duplicate_aliases() -> None:
+         _profile_from_raw(raw, "de-DE")
+
+
++def test_profile_validation_rejects_alias_whitespace() -> None:
++    raw = {
++        "schema_version": 1,
++        "id": "de-DE",
++        "version": "1",
++        "name": "German",
++        "aliases": [{"input": "x y", "canonical": "z", "reason": "spacing"}],
++    }
++
++    with pytest.raises(ProfileValidationError, match="whitespace"):
++        _profile_from_raw(raw, "de-DE")
++
++
++def test_profile_validation_rejects_alias_cascades() -> None:
++    raw = {
++        "schema_version": 1,
++        "id": "de-DE",
++        "version": "1",
++        "name": "German",
++        "aliases": [
++            {"input": "x", "canonical": "y", "reason": "first"},
++            {"input": "y", "canonical": "z", "reason": "second"},
++        ],
++    }
++
++    with pytest.raises(ProfileValidationError, match="cascade"):
++        _profile_from_raw(raw, "de-DE")
++
++
++def test_profile_validation_allows_one_sided_sequence_equivalence() -> None:
++    raw = {
++        "schema_version": 1,
++        "id": "de-DE",
++        "version": "1",
++        "name": "German",
++        "sequence_equivalences": [{"left": ["x"], "right": [], "cost": 0.5, "reason": "optional"}],
++    }
++
++    profile = _profile_from_raw(raw, "de-DE")
++    assert profile.sequence_equivalences[0].right == ()
++
++
+ def test_profile_cache_can_be_cleared() -> None:
+     get_profile("de-DE")
+     assert _load_profile.cache_info().currsize >= 1

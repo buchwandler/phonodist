@@ -1,0 +1,84 @@
+schema: releaseledger.entry-batch.v1
+operation: create
+schema_version: 1
+object_type: release_entry_batch
+release_version: v0.1.0
+git_base_ref: 4b825dc642cb6eb9a060e54bf8d69288fbee4904
+git_base_sha: 4b825dc642cb6eb9a060e54bf8d69288fbee4904
+git_head_ref: 3a4f9d6c2860413591e723501e5be30d9c6fbed7
+git_head_sha: 3a4f9d6c2860413591e723501e5be30d9c6fbed7
+include_merges: nontrivial
+entries:
+  - kind: added
+    summary: "Added the feature-align/1 IPA pronunciation distance API and CLI"
+    status: accepted
+    source_refs:
+      - git:89e0cf54a1a918de362d11baa2bf50e7fa881917
+    paths:
+      - phonodist/api.py
+      - phonodist/cli.py
+      - phonodist/alignment.py
+    sources: []
+    prs: []
+    issues: []
+  - kind: added
+    summary: "Added PanPhon-backed articulatory feature comparison with explicit metric and backend provenance"
+    status: accepted
+    source_refs: []
+    paths:
+      - phonodist/features.py
+      - phonodist/model.py
+      - docs/METRIC.md
+    sources:
+      - git:89e0cf54a1a918de362d11baa2bf50e7fa881917
+    prs: []
+    issues: []
+  - kind: added
+    summary: "Added the bundled Standard German de-DE profile and language-specific sequence equivalences"
+    status: accepted
+    source_refs:
+      - git:49983198d48361176cd7f5ca3694d0fdd099f738
+    paths:
+      - phonodist/data/profiles/de-DE.toml
+      - phonodist/profiles.py
+    sources:
+      - git:89e0cf54a1a918de362d11baa2bf50e7fa881917
+    prs: []
+    issues: []
+  - kind: changed
+    summary: "Changed alignment output to support score-only and explainable deterministic operation traces"
+    status: accepted
+    source_refs: []
+    paths:
+      - phonodist/alignment.py
+      - phonodist/api.py
+      - tests/test_cli.py
+      - tests/test_distance.py
+    sources:
+      - git:49983198d48361176cd7f5ca3694d0fdd099f738
+    prs: []
+    issues: []
+  - kind: fixed
+    summary: "Fixed IPA normalization, unsupported-segment validation, and release provenance"
+    status: accepted
+    source_refs:
+      - git:689acef91ba19e0b86190981fa3d481ae21a577c
+    paths:
+      - phonodist/normalize.py
+      - phonodist/profiles.py
+      - docs/METRIC.md
+    sources: []
+    prs: []
+    issues: []
+  - kind: docs
+    summary: "Documented metric limitations, profile semantics, and release publishing requirements"
+    status: accepted
+    source_refs: []
+    paths:
+      - docs/METRIC.md
+      - docs/PROFILES.md
+      - docs/RELEASING.md
+    sources:
+      - git:689acef91ba19e0b86190981fa3d481ae21a577c
+    prs: []
+    issues: []

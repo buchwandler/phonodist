@@ -1,0 +1,228 @@
+schema_version: 1
+object_type: commit_audit_sheet
+versioning:
+  schema_version: 1
+  revision: 3
+release_version: v0.1.0
+git_base_ref: :root
+git_base_sha: 4b825dc642cb6eb9a060e54bf8d69288fbee4904
+git_head_ref: HEAD
+git_head_sha: 3a4f9d6c2860413591e723501e5be30d9c6fbed7
+git_range: :root..3a4f9d6c2860413591e723501e5be30d9c6fbed7
+commit_count: 5
+rows:
+  - sha: c2e667df9aae11ad9597c75e1483f82941d6df9d
+    source_ref: git:c2e667df9aae11ad9597c75e1483f82941d6df9d
+    short_sha: c2e667d
+    changed_paths: []
+    stats:
+      files_changed: 0
+      insertions: 0
+      deletions: 0
+    inspected: true
+    inspected_paths:
+      - .gitignore
+      - LICENSE
+    observed_behavior:
+      Repository bootstrap added ignore rules and the project license;
+      it introduced no user-facing phonodist behavior.
+    public_impact: none
+    decision: rejected
+    stale: false
+    evidence_subject: Initial commit
+    notes: Repository scaffolding only, excluded from public release notes.
+  - sha: 89e0cf54a1a918de362d11baa2bf50e7fa881917
+    source_ref: git:89e0cf54a1a918de362d11baa2bf50e7fa881917
+    short_sha: 89e0cf5
+    changed_paths:
+      - .codecrate.toml
+      - .github/workflows/tests.yml
+      - .gitignore
+      - .ledger/ledger.toml
+      - .ledger/releaseledger/.ledger-project.toml
+      - .ledger/releaseledger/config.toml
+      - .ledger/releaseledger/data/.ledger-project.toml
+      - .ledger/taskledger/.ledger-project.toml
+      - .ledger/taskledger/config.toml
+      - .pre-commit-config.yaml
+      - README.md
+      - THIRD_PARTY_LICENSES.md
+      - docs/METRIC.md
+      - docs/PROFILES.md
+      - phonodist/__init__.py
+      - phonodist/alignment.py
+      - phonodist/api.py
+      - phonodist/cli.py
+      - phonodist/data/profiles/de-DE.toml
+      - phonodist/errors.py
+      - phonodist/features.py
+      - phonodist/model.py
+      - phonodist/normalize.py
+      - phonodist/profiles.py
+      - phonodist/py.typed
+      - phonodist/tokenize.py
+      - pyproject.toml
+      - tests/test_de_de.py
+      - tests/test_distance.py
+      - tests/test_features.py
+      - tests/test_normalize.py
+      - tests/test_version.py
+    stats:
+      files_changed: 0
+      insertions: 1535
+      deletions: 3
+    inspected: true
+    inspected_paths:
+      - README.md
+      - docs/METRIC.md
+      - docs/PROFILES.md
+      - phonodist/__init__.py
+      - phonodist/alignment.py
+      - phonodist/api.py
+      - phonodist/cli.py
+      - phonodist/data/profiles/de-DE.toml
+      - phonodist/features.py
+      - phonodist/model.py
+      - phonodist/normalize.py
+      - phonodist/profiles.py
+      - phonodist/tokenize.py
+      - tests/test_de_de.py
+      - tests/test_distance.py
+      - tests/test_features.py
+      - tests/test_normalize.py
+      - tests/test_version.py
+    observed_behavior:
+      Introduced the feature-align/1 IPA pronunciation distance API
+      and CLI with PanPhon feature comparison, deterministic sequence alignment, normalization,
+      provenance, and the initial Standard German profile.
+    public_impact: public
+    decision: accepted
+    stale: false
+    evidence_subject: "feat: initial release"
+    target_entry_key: added:feature-align/1 IPA pronunciation distance
+    target_entry_id: entry-0001
+    notes: ""
+  - sha: 49983198d48361176cd7f5ca3694d0fdd099f738
+    source_ref: git:49983198d48361176cd7f5ca3694d0fdd099f738
+    short_sha: "4998319"
+    changed_paths:
+      - .github/workflows/python-publish.yml
+      - .github/workflows/tests.yml
+      - MANIFEST.in
+      - README.md
+      - benchmarks/benchmark_distance.py
+      - docs/METRIC.md
+      - docs/PROFILES.md
+      - docs/changelog.md
+      - phonodist/__init__.py
+      - phonodist/alignment.py
+      - phonodist/api.py
+      - phonodist/cli.py
+      - phonodist/data/profiles/de-DE.toml
+      - phonodist/features.py
+      - phonodist/model.py
+      - phonodist/profiles.py
+      - pyproject.toml
+      - tests/test_cli.py
+      - tests/test_de_de.py
+      - tests/test_distance.py
+      - tests/test_features.py
+      - tests/test_normalize.py
+      - tests/test_packaging.py
+      - tests/test_profiles.py
+    stats:
+      files_changed: 0
+      insertions: 671
+      deletions: 220
+    inspected: true
+    inspected_paths:
+      - phonodist/alignment.py
+      - phonodist/api.py
+      - phonodist/cli.py
+      - phonodist/data/profiles/de-DE.toml
+      - tests/test_cli.py
+      - tests/test_de_de.py
+      - tests/test_distance.py
+      - tests/test_features.py
+      - tests/test_normalize.py
+      - tests/test_packaging.py
+      - tests/test_profiles.py
+      - docs/changelog.md
+    observed_behavior:
+      Expanded the initial metric with score-only and explainable operation
+      modes, German affricate and syllabic-sonorant equivalences, stricter validation,
+      packaging metadata, and regression coverage.
+    public_impact: public
+    decision: accepted
+    stale: false
+    evidence_subject: "feat: prepare for first release"
+    target_entry_key: changed:normalization and German profile behavior
+    target_entry_id: entry-0003
+    notes: ""
+  - sha: 689acef91ba19e0b86190981fa3d481ae21a577c
+    source_ref: git:689acef91ba19e0b86190981fa3d481ae21a577c
+    short_sha: 689acef
+    changed_paths:
+      - .github/workflows/python-publish.yml
+      - .github/workflows/tests.yml
+      - .ledger/releaseledger/config.toml
+      - MANIFEST.in
+      - README.md
+      - docs/METRIC.md
+      - docs/RELEASING.md
+      - phonodist/normalize.py
+      - phonodist/profiles.py
+      - pyproject.toml
+      - tests/test_cli.py
+      - tests/test_distance.py
+      - tests/test_normalize.py
+      - tests/test_packaging.py
+      - tests/test_profiles.py
+    stats:
+      files_changed: 0
+      insertions: 289
+      deletions: 19
+    inspected: true
+    inspected_paths:
+      - phonodist/normalize.py
+      - phonodist/profiles.py
+      - README.md
+      - docs/METRIC.md
+      - docs/PROFILES.md
+      - docs/RELEASING.md
+      - pyproject.toml
+      - tests/test_cli.py
+      - tests/test_distance.py
+      - tests/test_normalize.py
+      - tests/test_packaging.py
+      - tests/test_profiles.py
+    observed_behavior:
+      Refined normalization and profile handling, documented metric
+      and release scope, and completed package, CLI, and profile validation coverage.
+    public_impact: public
+    decision: accepted
+    stale: false
+    evidence_subject: "feat: prepare for first release"
+    target_entry_key: docs:metric and release documentation
+    target_entry_id: entry-0005
+    notes: ""
+  - sha: 3a4f9d6c2860413591e723501e5be30d9c6fbed7
+    source_ref: git:3a4f9d6c2860413591e723501e5be30d9c6fbed7
+    short_sha: 3a4f9d6
+    changed_paths:
+      - .github/workflows/python-publish.yml
+    stats:
+      files_changed: 0
+      insertions: 2
+      deletions: 0
+    inspected: true
+    inspected_paths:
+      - .github/workflows/python-publish.yml
+    observed_behavior:
+      Adjusted CI workflow configuration only; no user-facing product
+      behavior changed.
+    public_impact: internal
+    decision: internal
+    stale: false
+    evidence_subject: "chore: ci"
+    notes: CI-only change, excluded from public release notes.

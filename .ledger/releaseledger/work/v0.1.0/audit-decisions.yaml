@@ -1,0 +1,96 @@
+rows:
+  - sha: c2e667df9aae11ad9597c75e1483f82941d6df9d
+    inspected: true
+    inspected_paths:
+      - .gitignore
+      - LICENSE
+    observed_behavior: "Repository bootstrap added ignore rules and the project license; it introduced no user-facing phonodist behavior."
+    public_impact: none
+    decision: rejected
+    target_entry_key: null
+    target_entry_id: null
+    notes: "Repository scaffolding only, excluded from public release notes."
+    stale: false
+  - sha: 89e0cf54a1a918de362d11baa2bf50e7fa881917
+    inspected: true
+    inspected_paths:
+      - README.md
+      - docs/METRIC.md
+      - docs/PROFILES.md
+      - phonodist/__init__.py
+      - phonodist/alignment.py
+      - phonodist/api.py
+      - phonodist/cli.py
+      - phonodist/data/profiles/de-DE.toml
+      - phonodist/features.py
+      - phonodist/model.py
+      - phonodist/normalize.py
+      - phonodist/profiles.py
+      - phonodist/tokenize.py
+      - tests/test_de_de.py
+      - tests/test_distance.py
+      - tests/test_features.py
+      - tests/test_normalize.py
+      - tests/test_version.py
+    observed_behavior: "Introduced the feature-align/1 IPA pronunciation distance API and CLI with PanPhon feature comparison, deterministic sequence alignment, normalization, provenance, and the initial Standard German profile."
+    public_impact: public
+    decision: accepted
+    target_entry_key: added:feature-align/1 IPA pronunciation distance
+    target_entry_id: null
+    notes: ""
+    stale: false
+  - sha: 49983198d48361176cd7f5ca3694d0fdd099f738
+    inspected: true
+    inspected_paths:
+      - phonodist/alignment.py
+      - phonodist/api.py
+      - phonodist/cli.py
+      - phonodist/data/profiles/de-DE.toml
+      - tests/test_cli.py
+      - tests/test_de_de.py
+      - tests/test_distance.py
+      - tests/test_features.py
+      - tests/test_normalize.py
+      - tests/test_packaging.py
+      - tests/test_profiles.py
+      - docs/changelog.md
+    observed_behavior: "Expanded the initial metric with score-only and explainable operation modes, German affricate and syllabic-sonorant equivalences, stricter validation, packaging metadata, and regression coverage."
+    public_impact: public
+    decision: accepted
+    target_entry_key: changed:normalization and German profile behavior
+    target_entry_id: null
+    notes: ""
+    stale: false
+  - sha: 689acef91ba19e0b86190981fa3d481ae21a577c
+    inspected: true
+    inspected_paths:
+      - phonodist/normalize.py
+      - phonodist/profiles.py
+      - README.md
+      - docs/METRIC.md
+      - docs/PROFILES.md
+      - docs/RELEASING.md
+      - pyproject.toml
+      - tests/test_cli.py
+      - tests/test_distance.py
+      - tests/test_normalize.py
+      - tests/test_packaging.py
+      - tests/test_profiles.py
+    observed_behavior: "Refined normalization and profile handling, documented metric and release scope, and completed package, CLI, and profile validation coverage."
+    public_impact: public
+    decision: accepted
+    target_entry_key: docs:metric and release documentation
+    target_entry_id: null
+    notes: ""
+    stale: false
+  - sha: 3a4f9d6c2860413591e723501e5be30d9c6fbed7
+    inspected: true
+    inspected_paths:
+      - .github/workflows/python-publish.yml
+    observed_behavior: "Adjusted CI workflow configuration only; no user-facing product behavior changed."
+    public_impact: internal
+    decision: internal
+    target_entry_key: null
+    target_entry_id: null
+    notes: "CI-only change, excluded from public release notes."
+    stale: false

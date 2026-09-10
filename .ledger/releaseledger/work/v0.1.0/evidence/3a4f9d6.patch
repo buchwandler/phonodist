@@ -1,0 +1,13 @@
+ .github/workflows/python-publish.yml | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/.github/workflows/python-publish.yml b/.github/workflows/python-publish.yml
+index 7f56ad2..0035c77 100644
+--- a/.github/workflows/python-publish.yml
++++ b/.github/workflows/python-publish.yml
+@@ -112,3 +112,5 @@ jobs:
+       - uses: pypa/gh-action-pypi-publish@release/v1
+         with:
+           packages-dir: dist/
++          user: __token__
++          password: ${{ secrets.PYPI_API_TOKEN }}
