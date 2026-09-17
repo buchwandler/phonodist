@@ -49,6 +49,16 @@ A zero score means equivalence under the selected normalization and profile rule
 
 `feature-align/1` intentionally ignores primary and secondary stress. Stress-aware or prosodic comparison is outside the v0.1 metric. The public pronunciation-distance API rejects retained-stress scoring instead of treating stress markers as ordinary PanPhon segments.
 
+## Structural comparison
+
+The separate structural contract is identified as `ipa-compare/1`. It preserves primary
+and secondary stress as `StressEvent` values anchored in the stress-free canonical segment
+sequence. Its result classifies exact, notation-only, stress-only, phonetic-equivalent, and
+segmental differences, while embedding the `feature-align/1` segmental result.
+
+`ipa-compare/1` is a structural diagnostic, not a calibrated stress-distance model. It does
+not alter pronunciations or determine expected stress. See [docs/COMPARISON.md](COMPARISON.md).
+
 ## Provenance and versioning
 
 Every `DistanceResult` records the metric and metric version, selected profile and profile version, and the PanPhon backend name, resolved version, and `spe+` feature set. Bump the metric version when alignment, normalization, costs, or feature formulas change. Bump a profile version when language-specific rules or costs change. Package-only fixes that preserve scores do not require a metric version bump.

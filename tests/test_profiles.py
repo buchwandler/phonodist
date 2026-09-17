@@ -97,3 +97,16 @@ def test_profile_cache_can_be_cleared() -> None:
     assert _load_profile.cache_info().currsize >= 1
     _load_profile.cache_clear()
     assert _load_profile.cache_info().currsize == 0
+
+
+def test_profile_validation_rejects_stress_markers() -> None:
+    raw = {
+        "schema_version": 1,
+        "id": "de-DE",
+        "version": "1",
+        "name": "German",
+        "aliases": [{"input": "x", "canonical": "ˈx", "reason": "stress"}],
+    }
+
+    with pytest.raises(ProfileValidationError, match="stress markers"):
+        _profile_from_raw(raw, "de-DE")

@@ -47,6 +47,11 @@ print(result.distance)
 `pronunciation_distance` uses score-only mode by default. Request alignment
 operations explicitly with `explain=True`.
 
+`compare_pronunciations` provides the separate `ipa-compare/1` structural diagnostic. It
+preserves primary and secondary stress as anchored events while embedding the existing
+segmental result. For example, `wɪ\u200dɹ` versus `wˈɪ\u200dɹ` has zero `feature-align/1` distance
+but classifies as `stress_only`. See [docs/COMPARISON.md](docs/COMPARISON.md).
+
 ## CLI
 
 ```bash
@@ -54,6 +59,12 @@ phonodist compare de-DE \
   'ˈlʊftvafn̩ˌʃtʏt͡spʊŋkt' \
   'lˈʊftvˌafənʃtˌʏtspʊŋkt' \
   --explain
+```
+
+Structural diagnostics use the separate `diff` command and do not require a profile:
+
+```bash
+phonodist diff 'wɪ\u200dɹ' 'wˈɪ\u200dɹ' --explain
 ```
 
 JSON output is available with `--json`, and the package version is available
@@ -65,7 +76,8 @@ PanPhon validates every resulting segment. Unsupported IPA raises
 `UnknownSegmentError`, including when an unsupported segment appears on only
 one side or is identical on both sides. Unicode format characters such as the
 zero-width joiner are ignored during normalization. Stress is intentionally
-ignored by `feature-align/1`; retained-stress scoring is not implemented.
+ignored by `feature-align/1`; retained-stress scoring is not implemented. The separate
+`ipa-compare/1` structural API preserves stress for diagnostics.
 
 ## Metric scope and provenance
 

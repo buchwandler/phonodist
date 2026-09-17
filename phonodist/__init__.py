@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from importlib.metadata import PackageNotFoundError, version
 
-from .api import parse_ipa, pronunciation_distance, segment_distance
+from .api import compare_pronunciations, parse_ipa, pronunciation_distance, segment_distance
 from .errors import (
     InvalidIPAError,
     PhonodistError,
@@ -12,10 +12,16 @@ from .errors import (
 )
 from .model import (
     AlignmentOperation,
+    ComparisonKind,
+    ComparisonPronunciation,
     DistanceResult,
     LanguageProfile,
     ParseDiagnostic,
     ParsedPronunciation,
+    PronunciationComparison,
+    SegmentRelation,
+    StressEvent,
+    StressOperation,
 )
 from .profiles import available_profiles, get_profile
 
@@ -26,6 +32,12 @@ except PackageNotFoundError:
 
 __all__ = [
     "__version__",
+    "ComparisonKind",
+    "ComparisonPronunciation",
+    "PronunciationComparison",
+    "SegmentRelation",
+    "StressEvent",
+    "StressOperation",
     "AlignmentOperation",
     "DistanceResult",
     "InvalidIPAError",
@@ -36,6 +48,7 @@ __all__ = [
     "ProfileValidationError",
     "UnknownLanguageProfileError",
     "UnknownSegmentError",
+    "compare_pronunciations",
     "parse_ipa",
     "pronunciation_distance",
     "segment_distance",

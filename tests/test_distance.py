@@ -62,6 +62,12 @@ def test_retained_stress_is_not_supported() -> None:
         pronunciation_distance("ˈa", "a", ignore_stress=False)
 
 
+def test_comparison_does_not_change_feature_align_stress_policy() -> None:
+    assert pronunciation_distance("ˈa", "a").distance == 0.0
+    with pytest.raises(NotImplementedError):
+        pronunciation_distance("ˈa", "a", ignore_stress=False)
+
+
 @pytest.mark.parametrize(
     ("left", "right", "language"),
     [

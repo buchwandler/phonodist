@@ -3,6 +3,58 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
+StressKind = Literal["primary", "secondary"]
+StressOperationKind = Literal["insert", "delete", "replace"]
+SegmentRelation = Literal["exact", "equivalent", "different"]
+ComparisonKind = Literal[
+    "exact",
+    "notation_only",
+    "stress_only",
+    "phonetic_equivalent",
+    "stress_and_phonetic_equivalent",
+    "segmental",
+    "stress_and_segmental",
+]
+
+
+@dataclass(frozen=True, slots=True)
+class StressEvent:
+    kind: StressKind
+    anchor: int
+
+
+@dataclass(frozen=True, slots=True)
+class StressOperation:
+    kind: StressOperationKind
+    source: StressEvent | None
+    target: StressEvent | None
+
+
+@dataclass(frozen=True, slots=True)
+class ComparisonPronunciation:
+    original: str
+    normalized: str
+    segments: tuple[str, ...]
+    stress: tuple[StressEvent, ...]
+    diagnostics: tuple[ParseDiagnostic, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class PronunciationComparison:
+    classification: ComparisonKind
+    source: ComparisonPronunciation
+    target: ComparisonPronunciation
+    raw_equal: bool
+    canonical_equal: bool
+    segment_equal: bool
+    stress_equal: bool
+    segment_relation: SegmentRelation
+    segmental: DistanceResult
+    stress_operations: tuple[StressOperation, ...]
+    metric: str
+    metric_version: str
+
+
 OperationKind = Literal[
     "match",
     "substitute",

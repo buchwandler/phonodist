@@ -2,11 +2,10 @@ from __future__ import annotations
 
 import unicodedata
 
+from ._symbols import STRESS_MARKERS
 from .errors import InvalidIPAError
 from .model import ParseDiagnostic
 
-_PRIMARY_STRESS = "ˈ"
-_SECONDARY_STRESS = "ˌ"
 _TIE_BAR_BELOW = "\u035c"
 _TIE_BAR_ABOVE = "\u0361"
 
@@ -76,7 +75,7 @@ def normalize_ipa(
             )
             continue
 
-        if ignore_stress and char in {_PRIMARY_STRESS, _SECONDARY_STRESS}:
+        if ignore_stress and char in STRESS_MARKERS:
             diagnostics.append(
                 _diagnostic(
                     offset=offset,

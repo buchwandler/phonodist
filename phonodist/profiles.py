@@ -10,6 +10,7 @@ try:
 except ModuleNotFoundError:  # pragma: no cover - Python 3.10
     import tomli as tomllib
 
+from ._symbols import STRESS_MARKERS
 from .errors import ProfileValidationError, UnknownLanguageProfileError
 from .model import AliasRule, LanguageProfile, SequenceEquivalence
 
@@ -48,8 +49,13 @@ def _required_string(value: Any, field: str) -> str:
 
 
 def _validate_alias_text(value: str, field: str) -> None:
-    if any(char.isspace() or unicodedata.category(char) == "Cf" for char in value):
-        raise ProfileValidationError(f"{field} must not contain whitespace or format characters")
+    if any(
+        char.isspace() or unicodedata.category(char) == "Cf" or char in STRESS_MARKERS
+        for char in value
+    ):
+        raise ProfileValidationError(
+            f"{field} must not contain whitespace, format characters, or stress markers"
+        )
 
 
 def _profile_from_raw(raw: Any, language: str) -> LanguageProfile:

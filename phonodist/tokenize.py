@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import unicodedata
 
+from ._symbols import STRESS_MARKERS
 from .model import LanguageProfile
 
 _TIE_BAR = "\u0361"
@@ -51,7 +52,7 @@ def ipa_units(value: str) -> tuple[str, ...]:
     while i < len(value):
         char = value[i]
 
-        if char in _STRESS:
+        if char in STRESS_MARKERS:
             units.append(char)
             i += 1
             continue

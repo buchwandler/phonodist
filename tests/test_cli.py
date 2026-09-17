@@ -52,3 +52,27 @@ def test_cli_rejects_removed_keep_stress_flag() -> None:
         main(["compare", "de-DE", "ˈa", "a", "--keep-stress"])
 
     assert error.value.code == 2
+
+
+def test_diff_cli_reports_stress_only(capsys: pytest.CaptureFixture[str]) -> None:
+    assert main(["diff", "wɪ\u200dɹ", "wˈɪ\u200dɹ"]) == 0
+
+    output = capsys.readouterr().out
+    assert "classification: stress_only" in output
+    assert "segment_distance: 0.000000" in output
+
+
+def test_diff_cli_json_reports_nested_segmental_result(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    assert main(["diff", "wɪ\u200dɹ", "wˈɪ\u200dɹ", "--json"]) == 0
+
+    output = json.loads(capsys.readouterr().out)
+    assert output["classification"] == "stress_only"
+    assert output["segmental"]["distance"] == 0.0
+
+
+def test_diff_cli_accepts_optional_profile(capsys: pytest.CaptureFixture[str]) -> None:
+    assert main(["diff", "--language", "de-DE", "t͡s", "ts"]) == 0
+
+    assert "classification: phonetic_equivalent" in capsys.readouterr().out
