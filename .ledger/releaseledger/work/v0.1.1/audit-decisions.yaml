@@ -1,0 +1,27 @@
+rows:
+  - sha: 637ecd22cfda8eaf8b2908f7cbe07d7a97bd9999
+    inspected: true
+    inspected_paths:
+      - README.md
+      - benchmarks/benchmark_comparison.py
+      - docs/COMPARISON.md
+      - docs/METRIC.md
+      - phonodist/__init__.py
+      - phonodist/_symbols.py
+      - phonodist/api.py
+      - phonodist/cli.py
+      - phonodist/comparison.py
+      - phonodist/model.py
+      - phonodist/normalize.py
+      - phonodist/profiles.py
+      - phonodist/tokenize.py
+      - tests/test_cli.py
+      - tests/test_comparison.py
+      - tests/test_distance.py
+      - tests/test_profiles.py
+    observed_behavior: Added the public ipa-compare/1 structural comparison API and diff CLI, preserving stress events, classifying notation, stress, and segmental differences, and embedding feature-align/1 distance results
+    public_impact: public
+    decision: accepted
+    target_entry_key: null
+    target_entry_id: null
+    notes: Reviewed the implementation, documentation, and focused tests for the structural comparison behavior.

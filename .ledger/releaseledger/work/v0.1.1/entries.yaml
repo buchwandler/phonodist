@@ -1,0 +1,40 @@
+schema: releaseledger.entry-batch.v1
+operation: create
+schema_version: 1
+object_type: release_entry_batch
+release_version: v0.1.1
+git_base_ref: 9b686f3c2e35be49b3a8f4a969c133092e37132e
+git_base_sha: 9b686f3c2e35be49b3a8f4a969c133092e37132e
+git_head_ref: 637ecd22cfda8eaf8b2908f7cbe07d7a97bd9999
+git_head_sha: 637ecd22cfda8eaf8b2908f7cbe07d7a97bd9999
+include_merges: nontrivial
+entries:
+  - kind: added
+    summary: Added structural IPA comparison diagnostics with stress-aware classifications and a profile-aware diff CLI
+    status: accepted
+    source_refs:
+      - git:637ecd22cfda8eaf8b2908f7cbe07d7a97bd9999
+    paths:
+      - README.md
+      - benchmarks/benchmark_comparison.py
+      - docs/COMPARISON.md
+      - docs/METRIC.md
+      - phonodist/__init__.py
+      - phonodist/_symbols.py
+      - phonodist/api.py
+      - phonodist/cli.py
+      - phonodist/comparison.py
+      - phonodist/model.py
+      - phonodist/normalize.py
+      - phonodist/profiles.py
+      - phonodist/tokenize.py
+      - tests/test_cli.py
+      - tests/test_comparison.py
+      - tests/test_distance.py
+      - tests/test_profiles.py
+    sources:
+      - git:637ecd22cfda8eaf8b2908f7cbe07d7a97bd9999
+    prs: []
+    issues: []
+    contributors:
+      - "@holgern"

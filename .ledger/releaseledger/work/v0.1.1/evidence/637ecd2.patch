@@ -1,0 +1,1132 @@
+ README.md                          |  14 +++-
+ benchmarks/benchmark_comparison.py |  52 +++++++++++++
+ docs/COMPARISON.md                 |  81 ++++++++++++++++++++
+ docs/METRIC.md                     |  10 +++
+ phonodist/__init__.py              |  15 +++-
+ phonodist/_symbols.py              |  12 +++
+ phonodist/api.py                   | 146 ++++++++++++++++++++++++++++++-------
+ phonodist/cli.py                   | 128 +++++++++++++++++++++++++-------
+ phonodist/comparison.py            | 117 +++++++++++++++++++++++++++++
+ phonodist/model.py                 |  52 +++++++++++++
+ phonodist/normalize.py             |   5 +-
+ phonodist/profiles.py              |  10 ++-
+ phonodist/tokenize.py              |   3 +-
+ tests/test_cli.py                  |  24 ++++++
+ tests/test_comparison.py           | 146 +++++++++++++++++++++++++++++++++++++
+ tests/test_distance.py             |   6 ++
+ tests/test_profiles.py             |  13 ++++
+ 17 files changed, 771 insertions(+), 63 deletions(-)
+
+diff --git a/README.md b/README.md
+index 58b0df2..f8db1e5 100644
+--- a/README.md
++++ b/README.md
+@@ -47,6 +47,11 @@ print(result.distance)
+ `pronunciation_distance` uses score-only mode by default. Request alignment
+ operations explicitly with `explain=True`.
+
++`compare_pronunciations` provides the separate `ipa-compare/1` structural diagnostic. It
++preserves primary and secondary stress as anchored events while embedding the existing
++segmental result. For example, `wɪ\u200dɹ` versus `wˈɪ\u200dɹ` has zero `feature-align/1` distance
++but classifies as `stress_only`. See [docs/COMPARISON.md](docs/COMPARISON.md).
++
+ ## CLI
+
+ ```bash
+@@ -56,6 +61,12 @@ phonodist compare de-DE \
+   --explain
+ ```
+
++Structural diagnostics use the separate `diff` command and do not require a profile:
++
++```bash
++phonodist diff 'wɪ\u200dɹ' 'wˈɪ\u200dɹ' --explain
++```
++
+ JSON output is available with `--json`, and the package version is available
+ with `phonodist --version`.
+
+@@ -65,7 +76,8 @@ PanPhon validates every resulting segment. Unsupported IPA raises
+ `UnknownSegmentError`, including when an unsupported segment appears on only
+ one side or is identical on both sides. Unicode format characters such as the
+ zero-width joiner are ignored during normalization. Stress is intentionally
+-ignored by `feature-align/1`; retained-stress scoring is not implemented.
++ignored by `feature-align/1`; retained-stress scoring is not implemented. The separate
++`ipa-compare/1` structural API preserves stress for diagnostics.
+
+ ## Metric scope and provenance
+
+diff --git a/benchmarks/benchmark_comparison.py b/benchmarks/benchmark_comparison.py
+new file mode 100644
+index 0000000..6f50ccb
+--- /dev/null
++++ b/benchmarks/benchmark_comparison.py
+@@ -0,0 +1,52 @@
++from __future__ import annotations
++
++import argparse
++from time import perf_counter
++
++from phonodist import compare_pronunciations, get_profile, pronunciation_distance
++
++CASES = (
++    ("exact", "p", "p", None),
++    ("stress", "wɪ\u200dɹ", "wˈɪ\u200dɹ", None),
++    ("german", "t͡s", "ts", "de-DE"),
++    ("segmental", "p", "b", None),
++)
++
++
++def _measure_comparisons(count: int) -> float:
++    start = perf_counter()
++    for _ in range(count):
++        for _, source, target, language in CASES:
++            compare_pronunciations(source, target, language=language)
++    return perf_counter() - start
++
++
++def _measure_distances(count: int) -> float:
++    start = perf_counter()
++    for _ in range(count):
++        for _, source, target, language in CASES:
++            pronunciation_distance(source, target, language=language)
++    return perf_counter() - start
++
++
++def main() -> None:
++    parser = argparse.ArgumentParser(description="Measure structural comparison throughput.")
++    parser.add_argument("--count", type=int, default=1000)
++    args = parser.parse_args()
++
++    get_profile("de-DE")
++    comparisons = args.count * len(CASES)
++    comparison_seconds = _measure_comparisons(args.count)
++    distance_seconds = _measure_distances(args.count)
++
++    print(f"comparison_cases={len(CASES)}")
++    print(f"comparison_calls={comparisons}")
++    print(f"comparison_seconds={comparison_seconds:.6f}")
++    print(f"comparison_calls_per_second={comparisons / comparison_seconds:.2f}")
++    print(f"distance_calls={comparisons}")
++    print(f"distance_seconds={distance_seconds:.6f}")
++    print(f"distance_calls_per_second={comparisons / distance_seconds:.2f}")
++
++
++if __name__ == "__main__":
++    main()
+diff --git a/docs/COMPARISON.md b/docs/COMPARISON.md
+new file mode 100644
+index 0000000..c64ebac
+--- /dev/null
++++ b/docs/COMPARISON.md
+@@ -0,0 +1,81 @@
++# Structural IPA comparison
++
++`phonodist` exposes two deliberately separate comparison contracts:
++
++| Contract          | Purpose                              | Stress    | Result                    |
++| ----------------- | ------------------------------------ | --------- | ------------------------- |
++| `feature-align/1` | Phonetic feature distance            | Ignored   | `DistanceResult`          |
++| `ipa-compare/1`   | Structural difference classification | Preserved | `PronunciationComparison` |
++
++`ipa-compare/1` is a diagnostic classifier, not a calibrated stress-distance model. It
++explains supplied IPA output. It does not decide which pronunciation is correct, rewrite
++pronunciations, perform grapheme-to-phoneme conversion, or apply word-specific rules.
++
++## Python API
++
++```python
++from phonodist import compare_pronunciations, pronunciation_distance
++
++distance = pronunciation_distance("wɪ\u200dɹ", "wˈɪ\u200dɹ")
++assert distance.distance == 0.0
++
++comparison = compare_pronunciations("wɪ\u200dɹ", "wˈɪ\u200dɹ")
++assert comparison.classification == "stress_only"
++assert comparison.segment_equal
++assert not comparison.stress_equal
++assert comparison.target.stress[0].kind == "primary"
++assert comparison.target.stress[0].anchor == 1
++```
++
++The distance API answers whether the normalized segment sequences have feature distance.
++The structural API additionally reports raw equality, canonical segment equality, stress
++equality, segment relation, stress operations, and the embedded segmental distance result.
++
++## Structural fields
++
++`ComparisonPronunciation.segments` is a stress-free canonical segment tuple.
++`ComparisonPronunciation.stress` contains `StressEvent` values. Each event has kind
++`primary` or `secondary` and an anchor immediately after the corresponding number of
++canonical segments.
++
++`segment_relation` is one of:
++
++- `exact`: canonical segment tuples are identical.
++- `equivalent`: tuples differ, but `feature-align/1` has zero cost under the selected profile.
++- `different`: the segmental distance is greater than zero.
++
++Classifications are deterministic:
++
++- `exact`: raw strings are equal.
++- `notation_only`: canonical segments and stress are equal, but raw strings differ.
++- `stress_only`: canonical segments are equal and stress differs.
++- `phonetic_equivalent`: stress is equal, segment tuples differ, and segmental distance is zero.
++- `stress_and_phonetic_equivalent`: stress differs, segment tuples differ, and distance is zero.
++- `segmental`: stress is equal and segmental distance is greater than zero.
++- `stress_and_segmental`: both stress and segmental structure differ.
++
++Stress operations are deterministic. Same-anchor kind changes are `replace` operations.
++Source-only events are `delete` operations, and target-only events are `insert`
++operations. Stress movement is represented by a delete followed by an insert. No
++syllabification or fuzzy movement algorithm is involved.
++
++## CLI
++
++Use `diff` for structural diagnostics. A language profile is optional.
++
++```bash
++phonodist diff 'wɪ\u200dɹ' 'wˈɪ\u200dɹ'
++phonodist diff --language de-DE 't͡s' 'ts'
++phonodist diff --explain 'wɪ\u200dɹ' 'wˈɪ\u200dɹ'
++phonodist diff --json 'wɪ\u200dɹ' 'wˈɪ\u200dɹ'
++```
++
++The existing `phonodist compare de-DE SOURCE TARGET` command remains the
++`feature-align/1` distance command. Ordinary structural differences do not cause `diff`
++to return a non-zero status.
++
++## Profile boundary
++
++Profiles can define notation aliases, segment equivalences, and segment distance behavior.
++Stress extraction is universal IPA structure. Profiles do not define expected stress,
++contraction rules, or pronunciation rewrites.
+diff --git a/docs/METRIC.md b/docs/METRIC.md
+index 9b44e4d..eaaa18c 100644
+--- a/docs/METRIC.md
++++ b/docs/METRIC.md
+@@ -49,6 +49,16 @@ A zero score means equivalence under the selected normalization and profile rule
+
+ `feature-align/1` intentionally ignores primary and secondary stress. Stress-aware or prosodic comparison is outside the v0.1 metric. The public pronunciation-distance API rejects retained-stress scoring instead of treating stress markers as ordinary PanPhon segments.
+
++## Structural comparison
++
++The separate structural contract is identified as `ipa-compare/1`. It preserves primary
++and secondary stress as `StressEvent` values anchored in the stress-free canonical segment
++sequence. Its result classifies exact, notation-only, stress-only, phonetic-equivalent, and
++segmental differences, while embedding the `feature-align/1` segmental result.
++
++`ipa-compare/1` is a structural diagnostic, not a calibrated stress-distance model. It does
++not alter pronunciations or determine expected stress. See [docs/COMPARISON.md](COMPARISON.md).
++
+ ## Provenance and versioning
+
+ Every `DistanceResult` records the metric and metric version, selected profile and profile version, and the PanPhon backend name, resolved version, and `spe+` feature set. Bump the metric version when alignment, normalization, costs, or feature formulas change. Bump a profile version when language-specific rules or costs change. Package-only fixes that preserve scores do not require a metric version bump.
+diff --git a/phonodist/__init__.py b/phonodist/__init__.py
+index dd768d0..799e671 100644
+--- a/phonodist/__init__.py
++++ b/phonodist/__init__.py
+@@ -2,7 +2,7 @@ from __future__ import annotations
+
+ from importlib.metadata import PackageNotFoundError, version
+
+-from .api import parse_ipa, pronunciation_distance, segment_distance
++from .api import compare_pronunciations, parse_ipa, pronunciation_distance, segment_distance
+ from .errors import (
+     InvalidIPAError,
+     PhonodistError,
+@@ -12,10 +12,16 @@ from .errors import (
+ )
+ from .model import (
+     AlignmentOperation,
++    ComparisonKind,
++    ComparisonPronunciation,
+     DistanceResult,
+     LanguageProfile,
+     ParseDiagnostic,
+     ParsedPronunciation,
++    PronunciationComparison,
++    SegmentRelation,
++    StressEvent,
++    StressOperation,
+ )
+ from .profiles import available_profiles, get_profile
+
+@@ -26,6 +32,12 @@ except PackageNotFoundError:
+
+ __all__ = [
+     "__version__",
++    "ComparisonKind",
++    "ComparisonPronunciation",
++    "PronunciationComparison",
++    "SegmentRelation",
++    "StressEvent",
++    "StressOperation",
+     "AlignmentOperation",
+     "DistanceResult",
+     "InvalidIPAError",
+@@ -36,6 +48,7 @@ __all__ = [
+     "ProfileValidationError",
+     "UnknownLanguageProfileError",
+     "UnknownSegmentError",
++    "compare_pronunciations",
+     "parse_ipa",
+     "pronunciation_distance",
+     "segment_distance",
+diff --git a/phonodist/_symbols.py b/phonodist/_symbols.py
+new file mode 100644
+index 0000000..9a451dc
+--- /dev/null
++++ b/phonodist/_symbols.py
+@@ -0,0 +1,12 @@
++from __future__ import annotations
++
++from typing import Final
++
++PRIMARY_STRESS: Final = "ˈ"
++SECONDARY_STRESS: Final = "ˌ"
++
++STRESS_MARKERS: Final = frozenset({PRIMARY_STRESS, SECONDARY_STRESS})
++STRESS_KIND_BY_MARKER: Final = {
++    PRIMARY_STRESS: "primary",
++    SECONDARY_STRESS: "secondary",
++}
+diff --git a/phonodist/api.py b/phonodist/api.py
+index ec8c314..965ce6b 100644
+--- a/phonodist/api.py
++++ b/phonodist/api.py
+@@ -3,15 +3,29 @@ from __future__ import annotations
+ from functools import lru_cache
+
+ from .alignment import align_segments
++from .comparison import (
++    _classification,
++    _parse_comparison_pronunciation,
++    _segment_relation,
++    _stress_operations,
++)
+ from .errors import UnknownSegmentError
+ from .features import FeatureBackend, PanphonFeatureBackend
+-from .model import DistanceResult, LanguageProfile, ParsedPronunciation
++from .model import (
++    ComparisonPronunciation,
++    DistanceResult,
++    LanguageProfile,
++    ParsedPronunciation,
++    PronunciationComparison,
++)
+ from .normalize import normalize_ipa
+ from .profiles import get_profile, normalize_language_tag
+ from .tokenize import apply_aliases, ipa_units
+
+ _METRIC = "feature-align"
+ _METRIC_VERSION = "1"
++_COMPARISON_METRIC = "ipa-compare"
++_COMPARISON_METRIC_VERSION = "1"
+
+
+ @lru_cache(maxsize=1)
+@@ -69,43 +83,25 @@ def segment_distance(left: str, right: str) -> float:
+     return _backend().segment_distance(left, right)
+
+
+-def pronunciation_distance(
+-    source: str,
+-    target: str,
++def _distance_from_parsed(
++    parsed_source: ParsedPronunciation,
++    parsed_target: ParsedPronunciation,
+     *,
+-    language: str | None = None,
+-    ignore_stress: bool | None = None,
+-    explain: bool = False,
++    profile: LanguageProfile | None,
++    normalized_language: str | None,
++    backend: FeatureBackend,
++    explain: bool,
+ ) -> DistanceResult:
+-    """Return feature-align/1 distance, optionally with an alignment explanation."""
+-    if ignore_stress is False:
+-        raise NotImplementedError(
+-            "feature-align/1 is stress-insensitive; stress-aware comparison is not implemented"
+-        )
+-    profile = _resolve_profile(language)
+-    normalized_language = normalize_language_tag(language) if language is not None else None
+-    backend = _backend()
+-
+-    parsed_source = parse_ipa(
+-        source,
+-        language=language,
+-        ignore_stress=ignore_stress,
+-    )
+-    parsed_target = parse_ipa(
+-        target,
+-        language=language,
+-        ignore_stress=ignore_stress,
+-    )
+     _validate_segments(
+         parsed_source,
+         backend,
+-        pronunciation=source,
++        pronunciation=parsed_source.original,
+         language=normalized_language,
+     )
+     _validate_segments(
+         parsed_target,
+         backend,
+-        pronunciation=target,
++        pronunciation=parsed_target.original,
+         language=normalized_language,
+     )
+
+@@ -136,3 +132,97 @@ def pronunciation_distance(
+         backend_version=backend.version,
+         feature_set=backend.feature_set,
+     )
++
++
++def pronunciation_distance(
++    source: str,
++    target: str,
++    *,
++    language: str | None = None,
++    ignore_stress: bool | None = None,
++    explain: bool = False,
++) -> DistanceResult:
++    """Return feature-align/1 distance, optionally with an alignment explanation."""
++    if ignore_stress is False:
++        raise NotImplementedError(
++            "feature-align/1 is stress-insensitive; stress-aware comparison is not implemented"
++        )
++    profile = _resolve_profile(language)
++    normalized_language = normalize_language_tag(language) if language is not None else None
++    backend = _backend()
++    parsed_source = parse_ipa(
++        source,
++        language=language,
++        ignore_stress=ignore_stress,
++    )
++    parsed_target = parse_ipa(
++        target,
++        language=language,
++        ignore_stress=ignore_stress,
++    )
++    return _distance_from_parsed(
++        parsed_source,
++        parsed_target,
++        profile=profile,
++        normalized_language=normalized_language,
++        backend=backend,
++        explain=explain,
++    )
++
++
++def _stress_free_parsed(parsed: ComparisonPronunciation) -> ParsedPronunciation:
++    return ParsedPronunciation(
++        original=parsed.original,
++        normalized="".join(parsed.segments),
++        segments=parsed.segments,
++        diagnostics=parsed.diagnostics,
++    )
++
++
++def compare_pronunciations(
++    source: str,
++    target: str,
++    *,
++    language: str | None = None,
++    explain: bool = False,
++) -> PronunciationComparison:
++    """Explain structural, stress, and segmental differences between IPA values."""
++    profile = _resolve_profile(language)
++    normalized_language = normalize_language_tag(language) if language is not None else None
++    backend = _backend()
++    structural_source = _parse_comparison_pronunciation(source, language=language)
++    structural_target = _parse_comparison_pronunciation(target, language=language)
++    segmental = _distance_from_parsed(
++        _stress_free_parsed(structural_source),
++        _stress_free_parsed(structural_target),
++        profile=profile,
++        normalized_language=normalized_language,
++        backend=backend,
++        explain=explain,
++    )
++
++    raw_equal = source == target
++    segment_equal = structural_source.segments == structural_target.segments
++    stress_equal = structural_source.stress == structural_target.stress
++    segment_relation = _segment_relation(structural_source, structural_target, segmental.distance)
++    classification = _classification(
++        raw_equal=raw_equal,
++        segment_equal=segment_equal,
++        stress_equal=stress_equal,
++        segment_relation=segment_relation,
++    )
++
++    return PronunciationComparison(
++        classification=classification,
++        source=structural_source,
++        target=structural_target,
++        raw_equal=raw_equal,
++        canonical_equal=segment_equal and stress_equal,
++        segment_equal=segment_equal,
++        stress_equal=stress_equal,
++        segment_relation=segment_relation,
++        segmental=segmental,
++        stress_operations=_stress_operations(structural_source.stress, structural_target.stress),
++        metric=_COMPARISON_METRIC,
++        metric_version=_COMPARISON_METRIC_VERSION,
++    )
+diff --git a/phonodist/cli.py b/phonodist/cli.py
+index 5cb1e29..be01b6d 100644
+--- a/phonodist/cli.py
++++ b/phonodist/cli.py
+@@ -4,10 +4,12 @@ import argparse
+ import json
+ from collections.abc import Sequence
+ from dataclasses import asdict
++from typing import cast
+
+ from . import __version__
+-from .api import pronunciation_distance
++from .api import compare_pronunciations, pronunciation_distance
+ from .errors import PhonodistError
++from .model import DistanceResult, PronunciationComparison, StressOperation
+
+
+ def _build_parser() -> argparse.ArgumentParser:
+@@ -25,23 +27,92 @@ def _build_parser() -> argparse.ArgumentParser:
+     compare.add_argument("--explain", action="store_true", help="print alignment operations")
+     compare.add_argument("--json", action="store_true", help="emit JSON")
+
++    diff = subparsers.add_parser("diff", help="explain structural IPA differences")
++    diff.add_argument("source", help="source IPA")
++    diff.add_argument("target", help="target IPA")
++    diff.add_argument("--language", default=None, help="optional language/profile tag, e.g. de-DE")
++    diff.add_argument("--explain", action="store_true", help="print comparison operations")
++    diff.add_argument("--json", action="store_true", help="emit JSON")
++
+     return parser
+
+
++def _print_alignment(result: DistanceResult | PronunciationComparison) -> None:
++    operations = (
++        result.segmental.operations
++        if isinstance(result, PronunciationComparison)
++        else result.operations
++    )
++    print("alignment:")
++    for operation in operations:
++        source = " ".join(operation.source) or "∅"
++        target = " ".join(operation.target) or "∅"
++        print(
++            f"  {source:<12} -> {target:<12} "
++            f"cost={operation.cost:.4f} {operation.kind}: {operation.reason}"
++        )
++
++
++def _print_stress_operation(operation: StressOperation) -> None:
++    source = f"{operation.source.kind}@{operation.source.anchor}" if operation.source else "none"
++    target = f"{operation.target.kind}@{operation.target.anchor}" if operation.target else "none"
++    if operation.kind == "insert":
++        print(f"  insert {target}")
++    elif operation.kind == "delete":
++        print(f"  delete {source}")
++    else:
++        print(f"  replace {source} -> {target}")
++
++
++def _print_diff(comparison: PronunciationComparison, *, explain: bool) -> None:
++    print(f"classification: {comparison.classification}")
++    print(f"raw_equal: {str(comparison.raw_equal).lower()}")
++    print(f"canonical_equal: {str(comparison.canonical_equal).lower()}")
++    print(f"segment_relation: {comparison.segment_relation}")
++    print(f"segment_equal: {str(comparison.segment_equal).lower()}")
++    print(f"stress_equal: {str(comparison.stress_equal).lower()}")
++    print(f"segment_distance: {comparison.segmental.distance:.6f}")
++    print("stress:")
++    source = (
++        ", ".join(f"{event.kind}@{event.anchor}" for event in comparison.source.stress) or "none"
++    )
++    target = (
++        ", ".join(f"{event.kind}@{event.anchor}" for event in comparison.target.stress) or "none"
++    )
++    print(f"  source: {source}")
++    print(f"  target: {target}")
++
++    if explain:
++        print("stress operations:")
++        if comparison.stress_operations:
++            for operation in comparison.stress_operations:
++                _print_stress_operation(operation)
++        else:
++            print("  none")
++        if comparison.segmental.operations:
++            _print_alignment(comparison)
++
++
+ def main(argv: Sequence[str] | None = None) -> int:
+     parser = _build_parser()
+     args = parser.parse_args(argv)
+
+-    if args.command != "compare":
+-        parser.error(f"unsupported command: {args.command}")
+-
++    result: DistanceResult | PronunciationComparison
+     try:
+-        result = pronunciation_distance(
+-            args.source,
+-            args.target,
+-            language=args.language,
+-            explain=args.explain,
+-        )
++        if args.command == "compare":
++            result = pronunciation_distance(
++                args.source,
++                args.target,
++                language=args.language,
++                explain=args.explain,
++            )
++        else:
++            result = compare_pronunciations(
++                args.source,
++                args.target,
++                language=args.language,
++                explain=args.explain,
++            )
+     except PhonodistError as error:
+         parser.exit(2, f"phonodist: {error}\n")
+     except NotImplementedError as error:
+@@ -51,29 +122,32 @@ def main(argv: Sequence[str] | None = None) -> int:
+         print(json.dumps(asdict(result), ensure_ascii=False, indent=2))
+         return 0
+
+-    print(f"distance: {result.distance:.6f}")
+-    print(f"raw_cost: {result.raw_cost:.6f}")
+-    print(f"metric: {result.metric}/{result.metric_version}")
+-    print(f"backend: {result.backend}/{result.backend_version} ({result.feature_set})")
+-    if result.language is not None:
+-        print(f"profile: {result.language}/{result.profile_version}")
++    if args.command == "diff":
++        _print_diff(cast(PronunciationComparison, result), explain=args.explain)
++        return 0
++    distance_result = cast(DistanceResult, result)
++
++    print(f"distance: {distance_result.distance:.6f}")
++    print(f"raw_cost: {distance_result.raw_cost:.6f}")
++    print(f"metric: {distance_result.metric}/{distance_result.metric_version}")
++    print(
++        f"backend: {distance_result.backend}/{distance_result.backend_version} "
++        f"({distance_result.feature_set})"
++    )
++    if distance_result.language is not None:
++        print(f"profile: {distance_result.language}/{distance_result.profile_version}")
+
+-    if result.source.diagnostics or result.target.diagnostics:
++    if distance_result.source.diagnostics or distance_result.target.diagnostics:
+         print("normalization:")
+-        for side, parsed in (("source", result.source), ("target", result.target)):
++        for side, parsed in (
++            ("source", distance_result.source),
++            ("target", distance_result.target),
++        ):
+             for diagnostic in parsed.diagnostics:
+                 print(f"  {side}: {diagnostic.codepoint} {diagnostic.action} ({diagnostic.reason})")
+
+     if args.explain:
+-        print("alignment:")
+-        for operation in result.operations:
+-            source = " ".join(operation.source) or "∅"
+-            target = " ".join(operation.target) or "∅"
+-            print(
+-                f"  {source:<12} -> {target:<12} "
+-                f"cost={operation.cost:.4f} "
+-                f"{operation.kind}: {operation.reason}"
+-            )
++        _print_alignment(distance_result)
+
+     return 0
+
+diff --git a/phonodist/comparison.py b/phonodist/comparison.py
+new file mode 100644
+index 0000000..25eefa8
+--- /dev/null
++++ b/phonodist/comparison.py
+@@ -0,0 +1,117 @@
++from __future__ import annotations
++
++from collections import defaultdict
++from typing import cast
++
++from ._symbols import STRESS_KIND_BY_MARKER
++from .errors import InvalidIPAError
++from .model import (
++    ComparisonKind,
++    ComparisonPronunciation,
++    SegmentRelation,
++    StressEvent,
++    StressKind,
++    StressOperation,
++)
++from .normalize import normalize_ipa
++from .profiles import get_profile
++from .tokenize import apply_aliases, ipa_units
++
++
++def _parse_comparison_pronunciation(
++    value: str,
++    *,
++    language: str | None,
++) -> ComparisonPronunciation:
++    profile = get_profile(language) if language is not None else None
++    normalized, diagnostics = normalize_ipa(value, ignore_stress=False)
++    normalized = apply_aliases(normalized, profile)
++
++    segments: list[str] = []
++    stress: list[StressEvent] = []
++    for unit in ipa_units(normalized):
++        kind = STRESS_KIND_BY_MARKER.get(unit)
++        if kind is not None:
++            stress.append(
++                StressEvent(
++                    kind=cast(StressKind, kind),
++                    anchor=len(segments),
++                )
++            )
++            continue
++        segments.append(unit)
++
++    if not segments and value.strip():
++        raise InvalidIPAError("IPA value contains no parseable IPA characters")
++
++    return ComparisonPronunciation(
++        original=value,
++        normalized=normalized,
++        segments=tuple(segments),
++        stress=tuple(stress),
++        diagnostics=diagnostics,
++    )
++
++
++def _stress_operations(
++    source: tuple[StressEvent, ...],
++    target: tuple[StressEvent, ...],
++) -> tuple[StressOperation, ...]:
++    source_by_anchor: dict[int, list[StressEvent]] = defaultdict(list)
++    target_by_anchor: dict[int, list[StressEvent]] = defaultdict(list)
++    for event in source:
++        source_by_anchor[event.anchor].append(event)
++    for event in target:
++        target_by_anchor[event.anchor].append(event)
++
++    operations: list[StressOperation] = []
++    for anchor in sorted(source_by_anchor.keys() | target_by_anchor.keys()):
++        source_events = source_by_anchor[anchor]
++        target_events = target_by_anchor[anchor]
++        paired = min(len(source_events), len(target_events))
++        for index in range(paired):
++            source_event = source_events[index]
++            target_event = target_events[index]
++            if source_event.kind != target_event.kind:
++                operations.append(
++                    StressOperation(kind="replace", source=source_event, target=target_event)
++                )
++        for event in source_events[paired:]:
++            operations.append(StressOperation(kind="delete", source=event, target=None))
++        for event in target_events[paired:]:
++            operations.append(StressOperation(kind="insert", source=None, target=event))
++    return tuple(operations)
++
++
++def _segment_relation(
++    source: ComparisonPronunciation,
++    target: ComparisonPronunciation,
++    segmental_distance: float,
++) -> SegmentRelation:
++    if source.segments == target.segments:
++        return "exact"
++    if segmental_distance == 0.0:
++        return "equivalent"
++    return "different"
++
++
++def _classification(
++    *,
++    raw_equal: bool,
++    segment_equal: bool,
++    stress_equal: bool,
++    segment_relation: SegmentRelation,
++) -> ComparisonKind:
++    if raw_equal:
++        return "exact"
++    if segment_equal and stress_equal:
++        return "notation_only"
++    if segment_equal:
++        return "stress_only"
++    if segment_relation == "equivalent":
++        if stress_equal:
++            return "phonetic_equivalent"
++        return "stress_and_phonetic_equivalent"
++    if stress_equal:
++        return "segmental"
++    return "stress_and_segmental"
+diff --git a/phonodist/model.py b/phonodist/model.py
+index 08dc407..d72f2eb 100644
+--- a/phonodist/model.py
++++ b/phonodist/model.py
+@@ -3,6 +3,58 @@ from __future__ import annotations
+ from dataclasses import dataclass
+ from typing import Literal
+
++StressKind = Literal["primary", "secondary"]
++StressOperationKind = Literal["insert", "delete", "replace"]
++SegmentRelation = Literal["exact", "equivalent", "different"]
++ComparisonKind = Literal[
++    "exact",
++    "notation_only",
++    "stress_only",
++    "phonetic_equivalent",
++    "stress_and_phonetic_equivalent",
++    "segmental",
++    "stress_and_segmental",
++]
++
++
++@dataclass(frozen=True, slots=True)
++class StressEvent:
++    kind: StressKind
++    anchor: int
++
++
++@dataclass(frozen=True, slots=True)
++class StressOperation:
++    kind: StressOperationKind
++    source: StressEvent | None
++    target: StressEvent | None
++
++
++@dataclass(frozen=True, slots=True)
++class ComparisonPronunciation:
++    original: str
++    normalized: str
++    segments: tuple[str, ...]
++    stress: tuple[StressEvent, ...]
++    diagnostics: tuple[ParseDiagnostic, ...] = ()
++
++
++@dataclass(frozen=True, slots=True)
++class PronunciationComparison:
++    classification: ComparisonKind
++    source: ComparisonPronunciation
++    target: ComparisonPronunciation
++    raw_equal: bool
++    canonical_equal: bool
++    segment_equal: bool
++    stress_equal: bool
++    segment_relation: SegmentRelation
++    segmental: DistanceResult
++    stress_operations: tuple[StressOperation, ...]
++    metric: str
++    metric_version: str
++
++
+ OperationKind = Literal[
+     "match",
+     "substitute",
+diff --git a/phonodist/normalize.py b/phonodist/normalize.py
+index 57c66dc..885cbe6 100644
+--- a/phonodist/normalize.py
++++ b/phonodist/normalize.py
+@@ -2,11 +2,10 @@ from __future__ import annotations
+
+ import unicodedata
+
++from ._symbols import STRESS_MARKERS
+ from .errors import InvalidIPAError
+ from .model import ParseDiagnostic
+
+-_PRIMARY_STRESS = "ˈ"
+-_SECONDARY_STRESS = "ˌ"
+ _TIE_BAR_BELOW = "\u035c"
+ _TIE_BAR_ABOVE = "\u0361"
+
+@@ -76,7 +75,7 @@ def normalize_ipa(
+             )
+             continue
+
+-        if ignore_stress and char in {_PRIMARY_STRESS, _SECONDARY_STRESS}:
++        if ignore_stress and char in STRESS_MARKERS:
+             diagnostics.append(
+                 _diagnostic(
+                     offset=offset,
+diff --git a/phonodist/profiles.py b/phonodist/profiles.py
+index 66d5355..6a39dd3 100644
+--- a/phonodist/profiles.py
++++ b/phonodist/profiles.py
+@@ -10,6 +10,7 @@ try:
+ except ModuleNotFoundError:  # pragma: no cover - Python 3.10
+     import tomli as tomllib
+
++from ._symbols import STRESS_MARKERS
+ from .errors import ProfileValidationError, UnknownLanguageProfileError
+ from .model import AliasRule, LanguageProfile, SequenceEquivalence
+
+@@ -48,8 +49,13 @@ def _required_string(value: Any, field: str) -> str:
+
+
+ def _validate_alias_text(value: str, field: str) -> None:
+-    if any(char.isspace() or unicodedata.category(char) == "Cf" for char in value):
+-        raise ProfileValidationError(f"{field} must not contain whitespace or format characters")
++    if any(
++        char.isspace() or unicodedata.category(char) == "Cf" or char in STRESS_MARKERS
++        for char in value
++    ):
++        raise ProfileValidationError(
++            f"{field} must not contain whitespace, format characters, or stress markers"
++        )
+
+
+ def _profile_from_raw(raw: Any, language: str) -> LanguageProfile:
+diff --git a/phonodist/tokenize.py b/phonodist/tokenize.py
+index d316bd4..a081fd7 100644
+--- a/phonodist/tokenize.py
++++ b/phonodist/tokenize.py
+@@ -2,6 +2,7 @@ from __future__ import annotations
+
+ import unicodedata
+
++from ._symbols import STRESS_MARKERS
+ from .model import LanguageProfile
+
+ _TIE_BAR = "\u0361"
+@@ -51,7 +52,7 @@ def ipa_units(value: str) -> tuple[str, ...]:
+     while i < len(value):
+         char = value[i]
+
+-        if char in _STRESS:
++        if char in STRESS_MARKERS:
+             units.append(char)
+             i += 1
+             continue
+diff --git a/tests/test_cli.py b/tests/test_cli.py
+index df7be00..d82c251 100644
+--- a/tests/test_cli.py
++++ b/tests/test_cli.py
+@@ -52,3 +52,27 @@ def test_cli_rejects_removed_keep_stress_flag() -> None:
+         main(["compare", "de-DE", "ˈa", "a", "--keep-stress"])
+
+     assert error.value.code == 2
++
++
++def test_diff_cli_reports_stress_only(capsys: pytest.CaptureFixture[str]) -> None:
++    assert main(["diff", "wɪ\u200dɹ", "wˈɪ\u200dɹ"]) == 0
++
++    output = capsys.readouterr().out
++    assert "classification: stress_only" in output
++    assert "segment_distance: 0.000000" in output
++
++
++def test_diff_cli_json_reports_nested_segmental_result(
++    capsys: pytest.CaptureFixture[str],
++) -> None:
++    assert main(["diff", "wɪ\u200dɹ", "wˈɪ\u200dɹ", "--json"]) == 0
++
++    output = json.loads(capsys.readouterr().out)
++    assert output["classification"] == "stress_only"
++    assert output["segmental"]["distance"] == 0.0
++
++
++def test_diff_cli_accepts_optional_profile(capsys: pytest.CaptureFixture[str]) -> None:
++    assert main(["diff", "--language", "de-DE", "t͡s", "ts"]) == 0
++
++    assert "classification: phonetic_equivalent" in capsys.readouterr().out
+diff --git a/tests/test_comparison.py b/tests/test_comparison.py
+new file mode 100644
+index 0000000..8a18ac7
+--- /dev/null
++++ b/tests/test_comparison.py
+@@ -0,0 +1,146 @@
++from __future__ import annotations
++
++import pytest
++
++from phonodist import (
++    InvalidIPAError,
++    StressEvent,
++    StressOperation,
++    UnknownSegmentError,
++    compare_pronunciations,
++)
++
++
++def test_exact_comparison() -> None:
++    result = compare_pronunciations("wˈɪɹ", "wˈɪɹ")
++
++    assert result.classification == "exact"
++    assert result.raw_equal
++    assert result.canonical_equal
++    assert result.segment_equal
++    assert result.stress_equal
++    assert result.segment_relation == "exact"
++
++
++def test_espeak_native_cli_contraction_difference_is_stress_only() -> None:
++    result = compare_pronunciations("wɪ\u200dɹ", "wˈɪ\u200dɹ")
++
++    assert result.classification == "stress_only"
++    assert not result.raw_equal
++    assert not result.canonical_equal
++    assert result.segment_equal
++    assert not result.stress_equal
++    assert result.segment_relation == "exact"
++    assert result.segmental.distance == 0.0
++    assert result.source.stress == ()
++    assert result.target.stress == (StressEvent(kind="primary", anchor=1),)
++    assert result.metric == "ipa-compare"
++    assert result.metric_version == "1"
++    assert result.segmental.metric == "feature-align"
++
++
++def test_zwj_is_not_a_structural_difference() -> None:
++    result = compare_pronunciations("wˈɪ\u200dɹ", "wˈɪɹ")
++
++    assert result.classification == "notation_only"
++    assert result.canonical_equal
++    assert result.source.diagnostics
++
++
++def test_tie_bar_variant_is_notation_only() -> None:
++    result = compare_pronunciations("t͜s", "t͡s")
++
++    assert result.classification == "notation_only"
++    assert result.canonical_equal
++
++
++def test_nfc_and_nfd_are_notation_only() -> None:
++    result = compare_pronunciations("a\u0303", "ã")
++
++    assert result.classification == "notation_only"
++    assert result.canonical_equal
++
++
++def test_primary_vs_secondary_stress_is_replacement() -> None:
++    result = compare_pronunciations("ˌa", "ˈa")
++
++    assert result.classification == "stress_only"
++    assert result.stress_operations == (
++        StressOperation(
++            kind="replace",
++            source=StressEvent(kind="secondary", anchor=0),
++            target=StressEvent(kind="primary", anchor=0),
++        ),
++    )
++
++
++def test_stress_movement_is_delete_then_insert() -> None:
++    result = compare_pronunciations("ˈab", "aˈb")
++
++    assert result.stress_operations == (
++        StressOperation(
++            kind="delete",
++            source=StressEvent(kind="primary", anchor=0),
++            target=None,
++        ),
++        StressOperation(
++            kind="insert",
++            source=None,
++            target=StressEvent(kind="primary", anchor=1),
++        ),
++    )
++
++
++def test_segmental_difference() -> None:
++    result = compare_pronunciations("p", "b")
++
++    assert result.classification == "segmental"
++    assert result.segment_relation == "different"
++    assert result.segmental.distance > 0
++
++
++def test_stress_and_segmental_difference() -> None:
++    result = compare_pronunciations("ˈp", "b")
++
++    assert result.classification == "stress_and_segmental"
++
++
++def test_profile_zero_cost_equivalence() -> None:
++    result = compare_pronunciations("t͡s", "ts", language="de-DE")
++
++    assert result.classification == "phonetic_equivalent"
++    assert not result.segment_equal
++    assert result.stress_equal
++    assert result.segment_relation == "equivalent"
++    assert result.segmental.distance == 0.0
++
++
++def test_empty_input_is_exact() -> None:
++    result = compare_pronunciations("", "")
++
++    assert result.classification == "exact"
++    assert result.segmental.distance == 0.0
++
++
++def test_invalid_stress_only_input() -> None:
++    with pytest.raises(InvalidIPAError):
++        compare_pronunciations("ˈ", "")
++
++
++def test_unknown_segment_is_rejected() -> None:
++    with pytest.raises(UnknownSegmentError):
++        compare_pronunciations("#", "#")
++
++
++def test_outer_delimiters_are_notation_only() -> None:
++    result = compare_pronunciations("/p/", "p")
++
++    assert result.classification == "notation_only"
++    assert result.canonical_equal
++
++
++def test_stress_and_phonetic_equivalence() -> None:
++    result = compare_pronunciations("ˈt͡s", "ts", language="de-DE")
++
++    assert result.classification == "stress_and_phonetic_equivalent"
++    assert result.segment_relation == "equivalent"
+diff --git a/tests/test_distance.py b/tests/test_distance.py
+index d32d6bd..34313ac 100644
+--- a/tests/test_distance.py
++++ b/tests/test_distance.py
+@@ -62,6 +62,12 @@ def test_retained_stress_is_not_supported() -> None:
+         pronunciation_distance("ˈa", "a", ignore_stress=False)
+
+
++def test_comparison_does_not_change_feature_align_stress_policy() -> None:
++    assert pronunciation_distance("ˈa", "a").distance == 0.0
++    with pytest.raises(NotImplementedError):
++        pronunciation_distance("ˈa", "a", ignore_stress=False)
++
++
+ @pytest.mark.parametrize(
+     ("left", "right", "language"),
+     [
+diff --git a/tests/test_profiles.py b/tests/test_profiles.py
+index ea700f7..73f658a 100644
+--- a/tests/test_profiles.py
++++ b/tests/test_profiles.py
+@@ -97,3 +97,16 @@ def test_profile_cache_can_be_cleared() -> None:
+     assert _load_profile.cache_info().currsize >= 1
+     _load_profile.cache_clear()
+     assert _load_profile.cache_info().currsize == 0
++
++
++def test_profile_validation_rejects_stress_markers() -> None:
++    raw = {
++        "schema_version": 1,
++        "id": "de-DE",
++        "version": "1",
++        "name": "German",
++        "aliases": [{"input": "x", "canonical": "ˈx", "reason": "stress"}],
++    }
++
++    with pytest.raises(ProfileValidationError, match="stress markers"):
++        _profile_from_raw(raw, "de-DE")

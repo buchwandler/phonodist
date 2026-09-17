@@ -1,0 +1,41 @@
+{
+  "candidate_count": 1,
+  "candidates": [
+    {
+      "additions": 771,
+      "deletions": 63,
+      "patch_file": "637ecd2.patch",
+      "patch_sha256": "5cf010f67ade50897c990518f888a8b3d3bae20b2915fbff0c8b0d92250ec84f",
+      "paths": [
+        "README.md",
+        "benchmarks/benchmark_comparison.py",
+        "docs/COMPARISON.md",
+        "docs/METRIC.md",
+        "phonodist/__init__.py",
+        "phonodist/_symbols.py",
+        "phonodist/api.py",
+        "phonodist/cli.py",
+        "phonodist/comparison.py",
+        "phonodist/model.py",
+        "phonodist/normalize.py",
+        "phonodist/profiles.py",
+        "phonodist/tokenize.py",
+        "tests/test_cli.py",
+        "tests/test_comparison.py",
+        "tests/test_distance.py",
+        "tests/test_profiles.py"
+      ],
+      "sha": "637ecd22cfda8eaf8b2908f7cbe07d7a97bd9999",
+      "short_sha": "637ecd2",
+      "source_ref": "git:637ecd22cfda8eaf8b2908f7cbe07d7a97bd9999"
+    }
+  ],
+  "git_base_ref": "9b686f3c2e35be49b3a8f4a969c133092e37132e",
+  "git_base_sha": "9b686f3c2e35be49b3a8f4a969c133092e37132e",
+  "git_head_ref": "637ecd22cfda8eaf8b2908f7cbe07d7a97bd9999",
+  "git_head_sha": "637ecd22cfda8eaf8b2908f7cbe07d7a97bd9999",
+  "include_merges": "nontrivial",
+  "object_type": "git_evidence_manifest",
+  "release_version": "v0.1.1",
+  "schema_version": 1
+}

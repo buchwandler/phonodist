@@ -1,0 +1,69 @@
+schema_version: 1
+object_type: commit_audit_sheet
+versioning:
+  schema_version: 1
+  revision: 3
+release_version: v0.1.1
+git_base_ref: v0.1.0
+git_base_sha: 9b686f3c2e35be49b3a8f4a969c133092e37132e
+git_head_ref: HEAD
+git_head_sha: 637ecd22cfda8eaf8b2908f7cbe07d7a97bd9999
+git_range: 9b686f3c2e35be49b3a8f4a969c133092e37132e..637ecd22cfda8eaf8b2908f7cbe07d7a97bd9999
+commit_count: 1
+rows:
+  - sha: 637ecd22cfda8eaf8b2908f7cbe07d7a97bd9999
+    source_ref: git:637ecd22cfda8eaf8b2908f7cbe07d7a97bd9999
+    short_sha: 637ecd2
+    changed_paths:
+      - README.md
+      - benchmarks/benchmark_comparison.py
+      - docs/COMPARISON.md
+      - docs/METRIC.md
+      - phonodist/__init__.py
+      - phonodist/_symbols.py
+      - phonodist/api.py
+      - phonodist/cli.py
+      - phonodist/comparison.py
+      - phonodist/model.py
+      - phonodist/normalize.py
+      - phonodist/profiles.py
+      - phonodist/tokenize.py
+      - tests/test_cli.py
+      - tests/test_comparison.py
+      - tests/test_distance.py
+      - tests/test_profiles.py
+    stats:
+      files_changed: 17
+      insertions: 771
+      deletions: 63
+    inspected: true
+    inspected_paths:
+      - README.md
+      - benchmarks/benchmark_comparison.py
+      - docs/COMPARISON.md
+      - docs/METRIC.md
+      - phonodist/__init__.py
+      - phonodist/_symbols.py
+      - phonodist/api.py
+      - phonodist/cli.py
+      - phonodist/comparison.py
+      - phonodist/model.py
+      - phonodist/normalize.py
+      - phonodist/profiles.py
+      - phonodist/tokenize.py
+      - tests/test_cli.py
+      - tests/test_comparison.py
+      - tests/test_distance.py
+      - tests/test_profiles.py
+    observed_behavior:
+      Added the public ipa-compare/1 structural comparison API and
+      diff CLI, preserving stress events, classifying notation, stress, and segmental
+      differences, and embedding feature-align/1 distance results
+    public_impact: public
+    decision: accepted
+    stale: false
+    evidence_subject: "feat: structural comparison"
+    target_entry_id: entry-0001
+    notes:
+      Reviewed the implementation, documentation, and focused tests for the structural
+      comparison behavior.
