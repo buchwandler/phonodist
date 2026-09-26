@@ -1,15 +1,20 @@
 # Releasing phonodist
 
-The `v*` GitHub Actions workflow verifies the supported Python matrix, builds one
-artifact set, validates it, and publishes those exact artifacts to PyPI.
+The `v*` GitHub Actions workflow runs the supported Python test matrix, builds a
+distribution set, validates the artifacts, and publishes those same artifacts to PyPI.
 
-Before pushing a release tag, configure a PyPI Trusted Publisher for:
+## PyPI authentication
 
-- repository: `buchwandler/phonodist`;
-- workflow: `.github/workflows/python-publish.yml`;
-- environment: `pypi`;
-- publishing method: GitHub Actions OpenID Connect (OIDC), with no API token.
+The current publish job uses API-token authentication. The workflow passes the `PYPI_API_TOKEN`
+GitHub Actions secret to `pypa/gh-action-pypi-publish` as the `__token__` username/password
+credentials. Ensure that secret is available to the `pypi` environment and publish job.
 
-The PyPI account and GitHub environment are external configuration. Confirm the
-publisher values match the workflow before the first production tag. A TestPyPI
-run is recommended before publishing `v0.1.0`.
+The workflow also grants `id-token: write`, but the publishing action is explicitly given
+API-token credentials; the current setup is not tokenless GitHub Actions OIDC Trusted
+Publishing. Do not remove the token inputs until a PyPI Trusted Publisher is configured and
+the publishing strategy is deliberately changed.
+
+## Release rehearsal
+
+A TestPyPI rehearsal is recommended before changing the production publishing configuration
+or performing a high-risk release.

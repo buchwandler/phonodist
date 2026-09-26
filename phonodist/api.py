@@ -61,6 +61,39 @@ def parse_ipa(
     language: str | None = None,
     ignore_stress: bool | None = None,
 ) -> ParsedPronunciation:
+    """Normalize IPA text and split it into IPA units.
+
+    Parameters
+    ----------
+    value : str
+        IPA string to normalize. Matching outer ``/.../`` or ``[...]`` delimiters
+        and surrounding whitespace are stripped.
+    language : str or None
+        Bundled language-profile tag used for profile defaults and notation aliases.
+        ``None`` selects universal parsing. Aliases include ``de``, ``de-DE``, and
+        ``de_de`` for the German profile.
+    ignore_stress : bool or None
+        Whether to remove primary/secondary stress markers. ``None`` uses the
+        selected profile's default; in universal mode it defaults to ``True``.
+
+    Returns
+    -------
+    ParsedPronunciation
+        Original and normalized text, canonical segment units, and diagnostics.
+
+    Raises
+    ------
+    InvalidIPAError
+        If ``value`` is not a string or a non-empty value normalizes to no parseable content.
+    UnknownLanguageProfileError
+        If ``language`` does not resolve to a bundled profile.
+
+    Notes
+    -----
+    Normalization applies NFC, ignores internal whitespace and Unicode format
+    characters, and canonicalizes supported tie-bar variants. It does not check
+    whether every segment is supported by the metric's feature backend.
+    """
     profile = _resolve_profile(language)
 
     if ignore_stress is None:
@@ -79,7 +112,25 @@ def parse_ipa(
 
 
 def segment_distance(left: str, right: str) -> float:
-    """Return normalized PanPhon feature distance for two IPA segments."""
+    """Return normalized PanPhon feature distance for two IPA segments.
+
+    Parameters
+    ----------
+    left, right : str
+        IPA segments to compare. Each value must be recognized as exactly one
+        segment by the PanPhon backend.
+
+    Returns
+    -------
+    float
+        Unweighted feature difference normalized to ``[0, 1]``.
+
+    Raises
+    ------
+    UnknownSegmentError
+        If either input is not a supported single segment or their feature
+        vectors are incompatible.
+    """
     return _backend().segment_distance(left, right)
 
 
@@ -142,7 +193,48 @@ def pronunciation_distance(
     ignore_stress: bool | None = None,
     explain: bool = False,
 ) -> DistanceResult:
-    """Return feature-align/1 distance, optionally with an alignment explanation."""
+    """Compute normalized ``feature-align/1`` distance between IPA values.
+
+    Parameters
+    ----------
+    source, target : str
+        IPA pronunciations to compare.
+    language : str or None
+        Language-profile tag; ``None`` selects universal mode without
+        language-specific profile rules.
+    ignore_stress : bool or None
+        Stress policy passed to IPA parsing. ``None`` uses the selected profile's
+        default, or ignores stress in universal mode. Explicit ``False`` is
+        unsupported by ``feature-align/1`` and raises ``NotImplementedError``.
+    explain : bool
+        If true, include the deterministic segment-alignment traceback in
+        ``DistanceResult.operations``. The default score-only path returns an
+        empty operations tuple.
+
+    Returns
+    -------
+    DistanceResult
+        Normalized distance, raw alignment cost, denominator, parsed inputs,
+        optional operations, and metric/profile/backend provenance.
+
+    Raises
+    ------
+    InvalidIPAError
+        If an input cannot be normalized into parseable IPA.
+    UnknownLanguageProfileError
+        If ``language`` does not resolve to a bundled profile.
+    UnknownSegmentError
+        If the selected feature backend cannot represent an input segment.
+    NotImplementedError
+        If ``ignore_stress=False`` requests unimplemented stress-sensitive scoring.
+
+    Notes
+    -----
+    The score is bounded to ``[0, 1]`` and is not a calibrated human perceptual
+    distance. Score-only and traceback modes are intended to produce the same
+    score; ``explain=True`` adds operation detail. Stress is ignored by this
+    metric. Use :func:`compare_pronunciations` for structural stress diagnostics.
+    """
     if ignore_stress is False:
         raise NotImplementedError(
             "feature-align/1 is stress-insensitive; stress-aware comparison is not implemented"
@@ -186,7 +278,39 @@ def compare_pronunciations(
     language: str | None = None,
     explain: bool = False,
 ) -> PronunciationComparison:
-    """Explain structural, stress, and segmental differences between IPA values."""
+    """Classify structural differences between two IPA pronunciations.
+
+    Parameters
+    ----------
+    source, target : str
+        IPA pronunciations to compare.
+    language : str or None
+        Optional language-profile tag for notation aliases and sequence
+        equivalences; ``None`` uses universal rules.
+    explain : bool
+        If true, include segment-alignment and stress-operation details.
+
+    Returns
+    -------
+    PronunciationComparison
+        ``ipa-compare/1`` classification, canonical sides, anchored stress
+        events, and an embedded stress-free ``feature-align/1`` result.
+
+    Raises
+    ------
+    InvalidIPAError
+        If an input contains no parseable IPA content.
+    UnknownLanguageProfileError
+        If ``language`` does not resolve to a bundled profile.
+    UnknownSegmentError
+        If the feature backend cannot represent an input segment.
+
+    Notes
+    -----
+    Stress anchors count canonical segments preceding each stress mark. The
+    classification is structural, not a calibrated stress-distance model or a
+    judgment about which pronunciation is correct. The profile is optional.
+    """
     profile = _resolve_profile(language)
     normalized_language = normalize_language_tag(language) if language is not None else None
     backend = _backend()

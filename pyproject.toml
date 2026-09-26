@@ -44,7 +44,7 @@ phonodist = "phonodist.cli:main"
 [project.urls]
 Homepage = "https://github.com/buchwandler/phonodist"
 Repository = "https://github.com/buchwandler/phonodist"
-Documentation = "https://github.com/buchwandler/phonodist/blob/main/docs/METRIC.md"
+Documentation = "https://github.com/buchwandler/phonodist/tree/main/docs"
 Changelog = "https://github.com/buchwandler/phonodist/blob/main/docs/changelog.md"
 Issues = "https://github.com/buchwandler/phonodist/issues"
 # Intentionally no src/ layer. The import package lives at ./phonodist.

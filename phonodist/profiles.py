@@ -33,6 +33,14 @@ def normalize_language_tag(language: str) -> str:
 
 
 def available_profiles() -> tuple[str, ...]:
+    """Return identifiers of the profiles bundled in this package.
+
+    Returns
+    -------
+    tuple of str
+        Canonical IDs for profiles currently bundled with this package. The
+        current set is ``("de-DE",)``; this is not dynamic profile discovery.
+    """
     return ("de-DE",)
 
 
@@ -132,6 +140,26 @@ def _profile_from_raw(raw: Any, language: str) -> LanguageProfile:
 
 
 def get_profile(language: str) -> LanguageProfile:
+    """Load a bundled language profile by ID or supported alias.
+
+    Parameters
+    ----------
+    language : str
+        Profile identifier. For the bundled German profile, ``de``, ``de-DE``,
+        and ``de_de`` resolve to canonical ID ``de-DE`` (case-insensitively).
+
+    Returns
+    -------
+    LanguageProfile
+        Immutable profile metadata and sparse rules.
+
+    Raises
+    ------
+    UnknownLanguageProfileError
+        If no bundled profile matches the normalized identifier.
+    ProfileValidationError
+        If the profile data is invalid.
+    """
     return _load_profile(normalize_language_tag(language))
 
 
